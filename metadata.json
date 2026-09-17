@@ -1,0 +1,7 @@
+{
+  "name": "PrivateVault",
+  "description": "Ultra-premium encrypted digital fortress with Central Security & Privacy Center, Universal Search, Document Center, Media Center, and Code Studio.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
