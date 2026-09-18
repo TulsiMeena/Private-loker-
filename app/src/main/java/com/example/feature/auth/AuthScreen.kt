@@ -172,8 +172,11 @@ fun AuthScreen(
                 }
             }
             BiometricAuthMode.FACE -> {
-                // Open face recognition viewfinder modal directly for fast & reliable authentication
-                showBiometricModal = true
+                if (isBiometricEnrolled) {
+                    onBiometricClick()
+                } else {
+                    showBiometricModal = true
+                }
             }
             BiometricAuthMode.FINGERPRINT -> {
                 if (isBiometricEnrolled) {
