@@ -21,6 +21,23 @@ enum class VaultAccentColor(val title: String, val hexCode: Long) {
     CRIMSON("Crimson", 0xFFEF4444)
 }
 
+enum class LockScreenStyle(
+    val title: String,
+    val subtitle: String,
+    val badge: String
+) {
+    CYBERPUNK_HUD(
+        title = "Cyberpunk HUD Radar",
+        subtitle = "Arc reactor rings, holographic scanlines, radar laser & tactical keypad",
+        badge = "SCI-FI HUD"
+    ),
+    FROSTED_GLASS(
+        title = "Frosted Glassmorphism",
+        subtitle = "VisionOS translucent glass cards, fluid droplets, specular depth & ambient glow",
+        badge = "LUXURY GLASS"
+    )
+}
+
 enum class GlassIntensity(val title: String, val alphaFactor: Float) {
     OFF("Off (Solid)", 0.0f),
     LOW("Subtle", 0.35f),
@@ -74,6 +91,7 @@ class AppSettingsManager(context: Context) {
         // Appearance
         private const val KEY_THEME_MODE = "pref_theme_mode"
         private const val KEY_ACCENT_COLOR = "pref_accent_color"
+        private const val KEY_LOCK_SCREEN_STYLE = "pref_lock_screen_style"
         private const val KEY_GLASS_INTENSITY = "pref_glass_intensity"
         private const val KEY_ANIMATION_INTENSITY = "pref_animation_intensity"
         private const val KEY_REDUCED_MOTION = "pref_reduced_motion"
@@ -121,6 +139,9 @@ class AppSettingsManager(context: Context) {
 
     private val _accentColor = MutableStateFlow(loadAccentColor())
     val accentColor: StateFlow<VaultAccentColor> = _accentColor.asStateFlow()
+
+    private val _lockScreenStyle = MutableStateFlow(loadLockScreenStyle())
+    val lockScreenStyle: StateFlow<LockScreenStyle> = _lockScreenStyle.asStateFlow()
 
     private val _glassIntensity = MutableStateFlow(loadGlassIntensity())
     val glassIntensity: StateFlow<GlassIntensity> = _glassIntensity.asStateFlow()
@@ -202,6 +223,11 @@ class AppSettingsManager(context: Context) {
         return try { VaultAccentColor.valueOf(raw ?: VaultAccentColor.CYAN.name) } catch (_: Exception) { VaultAccentColor.CYAN }
     }
 
+    private fun loadLockScreenStyle(): LockScreenStyle {
+        val raw = prefs.getString(KEY_LOCK_SCREEN_STYLE, LockScreenStyle.CYBERPUNK_HUD.name)
+        return try { LockScreenStyle.valueOf(raw ?: LockScreenStyle.CYBERPUNK_HUD.name) } catch (_: Exception) { LockScreenStyle.CYBERPUNK_HUD }
+    }
+
     private fun loadGlassIntensity(): GlassIntensity {
         val raw = prefs.getString(KEY_GLASS_INTENSITY, GlassIntensity.MEDIUM.name)
         return try { GlassIntensity.valueOf(raw ?: GlassIntensity.MEDIUM.name) } catch (_: Exception) { GlassIntensity.MEDIUM }
@@ -241,6 +267,11 @@ class AppSettingsManager(context: Context) {
     fun setAccentColor(accent: VaultAccentColor) {
         prefs.edit().putString(KEY_ACCENT_COLOR, accent.name).apply()
         _accentColor.value = accent
+    }
+
+    fun setLockScreenStyle(style: LockScreenStyle) {
+        prefs.edit().putString(KEY_LOCK_SCREEN_STYLE, style.name).apply()
+        _lockScreenStyle.value = style
     }
 
     fun setGlassIntensity(intensity: GlassIntensity) {

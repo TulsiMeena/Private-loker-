@@ -106,6 +106,8 @@ fun VaultNavGraph(
     val auditLogs by vaultRepository.auditLogs.collectAsState(initial = emptyList())
     val scope = rememberCoroutineScope()
     val context = androidx.compose.ui.platform.LocalContext.current
+    val appSettingsManager = remember(context) { com.example.core.settings.AppSettingsManager.getInstance(context) }
+    val lockScreenStyle by appSettingsManager.lockScreenStyle.collectAsState()
 
     val dataLifecycleManager = remember {
         lifecycleManager ?: run {
@@ -211,6 +213,7 @@ fun VaultNavGraph(
                 biometricStatusDesc = biometricDesc,
                 voiceLockManager = voiceLockManager,
                 voicePassphrase = voicePassphrase,
+                lockScreenStyle = lockScreenStyle,
                 onVoiceUnlockSuccess = {
                     sessionManager.unlockViaVoiceBiometrics()
                     scope.launch {
@@ -343,6 +346,7 @@ fun VaultNavGraph(
                     biometricStatusDesc = biometricDesc,
                     voiceLockManager = voiceLockManager,
                     voicePassphrase = voicePassphrase,
+                    lockScreenStyle = lockScreenStyle,
                     onVoiceUnlockSuccess = {
                         sessionManager.unlockViaVoiceBiometrics()
                         scope.launch {

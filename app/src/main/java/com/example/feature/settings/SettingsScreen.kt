@@ -103,6 +103,7 @@ import com.example.core.settings.AppThemeMode
 import com.example.core.settings.EncodingPreference
 import com.example.core.settings.GlassIntensity
 import com.example.core.settings.LineEndingPreference
+import com.example.core.settings.LockScreenStyle
 import com.example.core.settings.ThumbnailQualityPreference
 import com.example.core.settings.VaultAccentColor
 import com.example.core.storage.SecureThumbnailProvider
@@ -110,6 +111,7 @@ import com.example.core.storage.VaultStorageManager
 import com.example.core.ui.SecurityPill
 import com.example.core.ui.VaultGlassCard
 import com.example.core.util.Formatters
+import com.example.core.util.HapticFeedbackUtil
 import com.example.feature.documents.DocumentThumbnailHelper
 import com.example.feature.media.MediaThumbnailHelper
 import kotlinx.coroutines.launch
@@ -1181,10 +1183,12 @@ private fun SecuritySettingsSection(
 // -------------------------------------------------------------
 @Composable
 private fun AppearanceSettingsSection(settingsManager: AppSettingsManager) {
+    val context = LocalContext.current
     val spacing = LocalVaultSpacing.current
     val vaultTypography = LocalVaultTypography.current
 
     val themeMode by settingsManager.themeMode.collectAsState()
+    val lockScreenStyle by settingsManager.lockScreenStyle.collectAsState()
     val accentColor by settingsManager.accentColor.collectAsState()
     val glassIntensity by settingsManager.glassIntensity.collectAsState()
     val animationIntensity by settingsManager.animationIntensity.collectAsState()
@@ -1220,6 +1224,149 @@ private fun AppearanceSettingsSection(settingsManager: AppSettingsManager) {
                             color = if (isSelected) MaterialTheme.colorScheme.primary else VaultColors.TextSecondary,
                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
                         )
+                    }
+                }
+            }
+        }
+
+        // Lock Screen Visual Style Selection
+        Column(verticalArrangement = Arrangement.spacedBy(spacing.s)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(
+                        text = "Lock Screen Style (लॉक स्क्रीन स्टाइल)",
+                        style = vaultTypography.title,
+                        color = VaultColors.TextPrimary,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = "Choose Cyberpunk Sci-Fi HUD or Frosted Glassmorphism",
+                        style = vaultTypography.caption,
+                        color = VaultColors.TextSecondary
+                    )
+                }
+                SecurityPill(
+                    text = lockScreenStyle.badge,
+                    dotColor = if (lockScreenStyle == LockScreenStyle.CYBERPUNK_HUD) VaultColors.AccentCyan else Color(0xFF8B5CF6)
+                )
+            }
+
+            Column(verticalArrangement = Arrangement.spacedBy(spacing.s)) {
+                LockScreenStyle.values().forEach { style ->
+                    val isSelected = lockScreenStyle == style
+                    VaultGlassCard(
+                        modifier = Modifier
+                            .testTag("lock_style_${style.name.lowercase()}")
+                            .fillMaxWidth()
+                            .clickable {
+                                HapticFeedbackUtil.performTactileTick(context)
+                                settingsManager.setLockScreenStyle(style)
+                            },
+                        borderColor = if (isSelected) {
+                            if (style == LockScreenStyle.CYBERPUNK_HUD) VaultColors.AccentCyan else Color(0xFF8B5CF6)
+                        } else VaultColors.GlassBorderSubtle,
+                        backgroundColor = if (isSelected) {
+                            (if (style == LockScreenStyle.CYBERPUNK_HUD) VaultColors.AccentCyan else Color(0xFF8B5CF6)).copy(alpha = 0.08f)
+                        } else VaultColors.SurfaceElevated.copy(alpha = 0.5f)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(spacing.m),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(spacing.m)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .clip(if (style == LockScreenStyle.CYBERPUNK_HUD) RoundedCornerShape(12.dp) else CircleShape)
+                                    .background(
+                                        if (isSelected) {
+                                            (if (style == LockScreenStyle.CYBERPUNK_HUD) VaultColors.AccentCyan else Color(0xFF8B5CF6)).copy(alpha = 0.18f)
+                                        } else VaultColors.SurfaceHighlight
+                                    )
+                                    .border(
+                                        width = 1.dp,
+                                        color = if (isSelected) {
+                                            if (style == LockScreenStyle.CYBERPUNK_HUD) VaultColors.AccentCyan else Color(0xFF8B5CF6)
+                                        } else VaultColors.GlassBorderSubtle,
+                                        shape = if (style == LockScreenStyle.CYBERPUNK_HUD) RoundedCornerShape(12.dp) else CircleShape
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = if (style == LockScreenStyle.CYBERPUNK_HUD) Icons.Default.Security else Icons.Default.Palette,
+                                    contentDescription = style.title,
+                                    tint = if (isSelected) {
+                                        if (style == LockScreenStyle.CYBERPUNK_HUD) VaultColors.AccentCyan else Color(0xFFC084FC)
+                                    } else VaultColors.TextSecondary,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+
+                            Column(modifier = Modifier.weight(1f)) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(spacing.xs)
+                                ) {
+                                    Text(
+                                        text = style.title,
+                                        style = vaultTypography.body,
+                                        color = VaultColors.TextPrimary,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                                    )
+                                    Text(
+                                        text = "[ ${style.badge} ]",
+                                        style = vaultTypography.caption.copy(
+                                            fontSize = 9.5.sp,
+                                            fontFamily = FontFamily.Monospace,
+                                            fontWeight = FontWeight.Bold
+                                        ),
+                                        color = if (isSelected) {
+                                            if (style == LockScreenStyle.CYBERPUNK_HUD) VaultColors.AccentCyan else Color(0xFFC084FC)
+                                        } else VaultColors.TextTertiary
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = style.subtitle,
+                                    style = vaultTypography.caption,
+                                    color = VaultColors.TextSecondary
+                                )
+                            }
+
+                            Box(
+                                modifier = Modifier
+                                    .size(26.dp)
+                                    .clip(CircleShape)
+                                    .background(
+                                        if (isSelected) {
+                                            if (style == LockScreenStyle.CYBERPUNK_HUD) VaultColors.AccentCyan else Color(0xFF8B5CF6)
+                                        } else Color.Transparent
+                                    )
+                                    .border(
+                                        width = 1.5.dp,
+                                        color = if (isSelected) {
+                                            if (style == LockScreenStyle.CYBERPUNK_HUD) VaultColors.AccentCyan else Color(0xFF8B5CF6)
+                                        } else VaultColors.TextTertiary,
+                                        shape = CircleShape
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (isSelected) {
+                                    Icon(
+                                        imageVector = Icons.Default.Check,
+                                        contentDescription = "Active",
+                                        tint = VaultColors.Canvas,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }

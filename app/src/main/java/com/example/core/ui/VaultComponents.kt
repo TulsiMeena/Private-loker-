@@ -8,6 +8,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import com.example.core.settings.LockScreenStyle
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -287,12 +288,17 @@ fun SecurityPill(
 /**
  * Precision tactile keypad for master PIN unlock.
  */
+/**
+ * Precision tactile keypad for master PIN unlock.
+ * Dynamically styled based on the active LockScreenStyle.
+ */
 @Composable
 fun TactileKeypad(
     onDigitClick: (String) -> Unit,
     onDeleteClick: () -> Unit,
     onBiometricClick: (() -> Unit)?,
     isBiometricAvailable: Boolean = true,
+    lockScreenStyle: LockScreenStyle = LockScreenStyle.CYBERPUNK_HUD,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -325,6 +331,7 @@ fun TactileKeypad(
                                     icon = Icons.Filled.Fingerprint,
                                     contentDesc = "Unlock with Biometrics",
                                     tag = "keypad_biometric_button",
+                                    lockScreenStyle = lockScreenStyle,
                                     onClick = {
                                         HapticFeedbackUtil.performTactileTick(context)
                                         onBiometricClick()
@@ -339,6 +346,7 @@ fun TactileKeypad(
                                 icon = Icons.Filled.Backspace,
                                 contentDesc = "Delete digit",
                                 tag = "keypad_delete_button",
+                                lockScreenStyle = lockScreenStyle,
                                 onClick = {
                                     HapticFeedbackUtil.performTactileTick(context)
                                     onDeleteClick()
@@ -348,6 +356,7 @@ fun TactileKeypad(
                         else -> {
                             KeypadDigitButton(
                                 digit = key,
+                                lockScreenStyle = lockScreenStyle,
                                 onClick = {
                                     HapticFeedbackUtil.performTactileTick(context)
                                     onDigitClick(key)
@@ -364,23 +373,113 @@ fun TactileKeypad(
 @Composable
 private fun KeypadDigitButton(
     digit: String,
+    lockScreenStyle: LockScreenStyle,
     onClick: () -> Unit
 ) {
-    Box(
-        modifier = Modifier
-            .size(72.dp)
-            .testTag("keypad_digit_$digit")
-            .clip(CircleShape)
-            .background(VaultColors.SurfaceElevated.copy(alpha = 0.7f))
-            .border(BorderStroke(1.dp, VaultColors.GlassBorderSubtle), CircleShape)
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = digit,
-            style = LocalVaultTypography.current.keypadDigit,
-            color = VaultColors.TextPrimary
-        )
+    val subText = when (digit) {
+        "2" -> "ABC"
+        "3" -> "DEF"
+        "4" -> "GHI"
+        "5" -> "JKL"
+        "6" -> "MNO"
+        "7" -> "PQRS"
+        "8" -> "TUV"
+        "9" -> "WXYZ"
+        "0" -> "+"
+        else -> ""
+    }
+
+    if (lockScreenStyle == LockScreenStyle.CYBERPUNK_HUD) {
+        // High-Tech Cyberpunk Tactical Button
+        val cornerShape = RoundedCornerShape(18.dp)
+        Box(
+            modifier = Modifier
+                .size(72.dp)
+                .testTag("keypad_digit_$digit")
+                .clip(cornerShape)
+                .background(VaultColors.SurfaceElevated.copy(alpha = 0.85f))
+                .border(BorderStroke(1.2.dp, VaultColors.GlassBorderMedium), cornerShape)
+                .clickable(onClick = onClick),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Text(
+                    text = digit,
+                    style = LocalVaultTypography.current.keypadDigit.copy(
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold
+                    ),
+                    color = VaultColors.TextPrimary
+                )
+                if (subText.isNotEmpty()) {
+                    Text(
+                        text = subText,
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontSize = 9.sp,
+                            letterSpacing = 1.2.sp,
+                            fontWeight = FontWeight.SemiBold
+                        ),
+                        color = VaultColors.AccentCyan.copy(alpha = 0.75f)
+                    )
+                }
+            }
+        }
+    } else {
+        // Frosted Glassmorphism Apple-Vision Luxury Button
+        val circle = CircleShape
+        Box(
+            modifier = Modifier
+                .size(72.dp)
+                .testTag("keypad_digit_$digit")
+                .clip(circle)
+                .background(
+                    Brush.verticalGradient(
+                        listOf(
+                            Color.White.copy(alpha = 0.14f),
+                            Color.White.copy(alpha = 0.04f)
+                        )
+                    )
+                )
+                .border(
+                    BorderStroke(
+                        1.2.dp,
+                        Brush.verticalGradient(
+                            listOf(
+                                Color.White.copy(alpha = 0.38f),
+                                Color.White.copy(alpha = 0.08f)
+                            )
+                        )
+                    ),
+                    circle
+                )
+                .clickable(onClick = onClick),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Text(
+                    text = digit,
+                    style = LocalVaultTypography.current.keypadDigit,
+                    color = VaultColors.TextPrimary
+                )
+                if (subText.isNotEmpty()) {
+                    Text(
+                        text = subText,
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontSize = 8.5.sp,
+                            letterSpacing = 0.8.sp,
+                            fontWeight = FontWeight.Normal
+                        ),
+                        color = VaultColors.TextTertiary
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -389,24 +488,65 @@ private fun KeypadActionButton(
     icon: ImageVector,
     contentDesc: String,
     tag: String,
+    lockScreenStyle: LockScreenStyle,
     onClick: () -> Unit
 ) {
-    Box(
-        modifier = Modifier
-            .size(72.dp)
-            .testTag(tag)
-            .clip(CircleShape)
-            .background(VaultColors.SurfaceGraphite)
-            .border(BorderStroke(1.dp, VaultColors.GlassBorderSubtle), CircleShape)
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = contentDesc,
-            tint = VaultColors.AccentCyan,
-            modifier = Modifier.size(24.dp)
-        )
+    if (lockScreenStyle == LockScreenStyle.CYBERPUNK_HUD) {
+        val cornerShape = RoundedCornerShape(18.dp)
+        Box(
+            modifier = Modifier
+                .size(72.dp)
+                .testTag(tag)
+                .clip(cornerShape)
+                .background(VaultColors.SurfaceGraphite)
+                .border(BorderStroke(1.2.dp, VaultColors.GlassBorderMedium), cornerShape)
+                .clickable(onClick = onClick),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = contentDesc,
+                tint = VaultColors.AccentCyan,
+                modifier = Modifier.size(24.dp)
+            )
+        }
+    } else {
+        val circle = CircleShape
+        Box(
+            modifier = Modifier
+                .size(72.dp)
+                .testTag(tag)
+                .clip(circle)
+                .background(
+                    Brush.verticalGradient(
+                        listOf(
+                            Color.White.copy(alpha = 0.10f),
+                            Color.White.copy(alpha = 0.03f)
+                        )
+                    )
+                )
+                .border(
+                    BorderStroke(
+                        1.dp,
+                        Brush.verticalGradient(
+                            listOf(
+                                Color.White.copy(alpha = 0.28f),
+                                Color.White.copy(alpha = 0.05f)
+                            )
+                        )
+                    ),
+                    circle
+                )
+                .clickable(onClick = onClick),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = contentDesc,
+                tint = VaultColors.TextPrimary,
+                modifier = Modifier.size(24.dp)
+            )
+        }
     }
 }
 
@@ -421,6 +561,7 @@ fun VaultPipIndicator(
     enteredCount: Int,
     isLockout: Boolean = false,
     isError: Boolean = false,
+    lockScreenStyle: LockScreenStyle = LockScreenStyle.CYBERPUNK_HUD,
     modifier: Modifier = Modifier
 ) {
     Row(
@@ -441,24 +582,162 @@ fun VaultPipIndicator(
                 else -> VaultColors.GlassBorderMedium
             }
 
-            Box(
-                modifier = Modifier
-                    .size(16.dp)
-                    .clip(CircleShape)
-                    .background(pipColor)
-                    .border(1.5.dp, borderColor, CircleShape),
-                contentAlignment = Alignment.Center
-            ) {
-                if (isFilled && !isLockout && !isError) {
-                    Box(
-                        modifier = Modifier
-                            .size(6.dp)
-                            .clip(CircleShape)
-                            .background(Color.White)
-                    )
+            if (lockScreenStyle == LockScreenStyle.CYBERPUNK_HUD) {
+                // Cyberpunk Angular Data Blocks
+                val shape = RoundedCornerShape(4.dp)
+                Box(
+                    modifier = Modifier
+                        .size(16.dp, 16.dp)
+                        .clip(shape)
+                        .background(pipColor)
+                        .border(1.5.dp, borderColor, shape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (isFilled && !isLockout && !isError) {
+                        Box(
+                            modifier = Modifier
+                                .size(6.dp)
+                                .clip(RoundedCornerShape(1.dp))
+                                .background(Color.White)
+                        )
+                    }
+                }
+            } else {
+                // Frosted Glass Liquid Droplet
+                val dropletModifier = if (isFilled && !isLockout && !isError) {
+                    Modifier
+                        .size(16.dp)
+                        .clip(CircleShape)
+                        .background(
+                            Brush.radialGradient(
+                                listOf(
+                                    Color.White,
+                                    VaultColors.AccentCyan
+                                )
+                            )
+                        )
+                        .border(1.5.dp, borderColor, CircleShape)
+                } else {
+                    Modifier
+                        .size(16.dp)
+                        .clip(CircleShape)
+                        .background(pipColor)
+                        .border(1.5.dp, borderColor, CircleShape)
+                }
+                Box(
+                    modifier = dropletModifier,
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (isFilled && !isLockout && !isError) {
+                        Box(
+                            modifier = Modifier
+                                .size(5.dp)
+                                .clip(CircleShape)
+                                .background(Color.White)
+                        )
+                    }
                 }
             }
         }
+    }
+}
+
+/**
+ * Animated Cyberpunk HUD background overlay with fine grid lines and a laser scanning radar bar.
+ */
+@Composable
+fun CyberpunkHudOverlay(modifier: Modifier = Modifier) {
+    val infiniteTransition = rememberInfiniteTransition(label = "hud_scan")
+    val scanProgress by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(4000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "scan_laser"
+    )
+
+    Canvas(modifier = modifier.fillMaxSize()) {
+        val width = size.width
+        val height = size.height
+        val gridSpacing = 40.dp.toPx()
+
+        // Subtle sci-fi grid
+        var x = 0f
+        while (x <= width) {
+            drawLine(
+                color = VaultColors.AccentCyan.copy(alpha = 0.04f),
+                start = Offset(x, 0f),
+                end = Offset(x, height),
+                strokeWidth = 1f
+            )
+            x += gridSpacing
+        }
+
+        var y = 0f
+        while (y <= height) {
+            drawLine(
+                color = VaultColors.AccentCyan.copy(alpha = 0.04f),
+                start = Offset(0f, y),
+                end = Offset(width, y),
+                strokeWidth = 1f
+            )
+            y += gridSpacing
+        }
+
+        // Animated laser sweep bar
+        val scanY = height * scanProgress
+        drawLine(
+            brush = Brush.horizontalGradient(
+                listOf(
+                    Color.Transparent,
+                    VaultColors.AccentCyan.copy(alpha = 0.25f),
+                    VaultColors.AccentCyan.copy(alpha = 0.50f),
+                    VaultColors.AccentCyan.copy(alpha = 0.25f),
+                    Color.Transparent
+                )
+            ),
+            start = Offset(0f, scanY),
+            end = Offset(width, scanY),
+            strokeWidth = 2.dp.toPx()
+        )
+    }
+}
+
+/**
+ * Ambient Frosted Glass background overlay with subtle floating ethereal glow orbs.
+ */
+@Composable
+fun FrostedGlassAmbientOverlay(modifier: Modifier = Modifier) {
+    val infiniteTransition = rememberInfiniteTransition(label = "glass_ambient")
+    val pulse by infiniteTransition.animateFloat(
+        initialValue = 0.88f,
+        targetValue = 1.12f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(3500, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "ambient_pulse"
+    )
+
+    Canvas(modifier = modifier.fillMaxSize()) {
+        val center = Offset(size.width * 0.5f, size.height * 0.32f)
+        val radius = size.minDimension * 0.55f * pulse
+
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(
+                    VaultColors.AccentCyan.copy(alpha = 0.12f),
+                    Color(0xFF8B5CF6).copy(alpha = 0.07f),
+                    Color.Transparent
+                ),
+                center = center,
+                radius = radius
+            ),
+            center = center,
+            radius = radius
+        )
     }
 }
 

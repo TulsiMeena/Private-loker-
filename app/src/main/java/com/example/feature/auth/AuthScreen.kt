@@ -79,6 +79,9 @@ import com.example.core.designsystem.LocalVaultSpacing
 import com.example.core.designsystem.LocalVaultTypography
 import com.example.core.designsystem.VaultColors
 import com.example.core.security.LockState
+import com.example.core.settings.LockScreenStyle
+import com.example.core.ui.CyberpunkHudOverlay
+import com.example.core.ui.FrostedGlassAmbientOverlay
 import com.example.core.ui.SecurityPill
 import com.example.core.ui.TactileKeypad
 import com.example.core.ui.VaultCoreOrb
@@ -115,6 +118,7 @@ fun AuthScreen(
     biometricStatusDesc: String = "",
     voiceLockManager: VoiceLockSecurityManager? = null,
     voicePassphrase: String = "Open Private Vault",
+    lockScreenStyle: LockScreenStyle = LockScreenStyle.CYBERPUNK_HUD,
     onPinSubmit: (String) -> Boolean,
     onBiometricPreferenceChange: (Boolean) -> Unit = {},
     onBiometricClick: () -> Unit,
@@ -158,17 +162,26 @@ fun AuthScreen(
     val triggerBiometricAuth: (BiometricAuthMode) -> Unit = { mode ->
         activeBiometricMode = mode
         HapticFeedbackUtil.performTactileTick(context)
-        if (mode == BiometricAuthMode.VOICE) {
-            showBiometricModal = true
-            if (voiceLockManager?.hasRecordAudioPermission() == true) {
-                voiceLockManager.startListening()
-            } else {
-                audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        when (mode) {
+            BiometricAuthMode.VOICE -> {
+                showBiometricModal = true
+                if (voiceLockManager?.hasRecordAudioPermission() == true) {
+                    voiceLockManager.startListening()
+                } else {
+                    audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                }
             }
-        } else if (isBiometricEnrolled) {
-            onBiometricClick()
-        } else {
-            showBiometricModal = true
+            BiometricAuthMode.FACE -> {
+                // Open face recognition viewfinder modal directly for fast & reliable authentication
+                showBiometricModal = true
+            }
+            BiometricAuthMode.FINGERPRINT -> {
+                if (isBiometricEnrolled) {
+                    onBiometricClick()
+                } else {
+                    showBiometricModal = true
+                }
+            }
         }
     }
 
@@ -244,60 +257,116 @@ fun AuthScreen(
     val isLockout = lockState is LockState.Lockout
     val lockoutSeconds = if (lockState is LockState.Lockout) lockState.remainingSeconds else 0
 
-    Column(
+    Box(
         modifier = modifier
             .testTag("auth_screen")
             .fillMaxSize()
             .background(VaultColors.Canvas)
-            .padding(vertical = spacing.screenVertical),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.SpaceBetween
     ) {
-        // Top Security Identity Element
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.padding(top = spacing.m)
-        ) {
-            VaultCoreOrb(
-                modifier = Modifier.size(100.dp),
-                isUnlocked = false,
-                accentColor = if (isLockout) VaultColors.AccentCrimson else VaultColors.AccentCyan
-            )
-
-            Spacer(modifier = Modifier.height(spacing.m))
-
-            Text(
-                text = when {
-                    isLockout -> "VAULT LOCKED"
-                    isSetupMode && setupStep == SetupStep.ENTER_PIN -> "CREATE MASTER PASSCODE"
-                    isSetupMode && setupStep == SetupStep.CONFIRM_PIN -> "CONFIRM MASTER PASSCODE"
-                    isSetupMode && setupStep == SetupStep.BIOMETRIC_CONFIG -> "BIOMETRIC ENCLAVE"
-                    else -> "AUTHENTICATE"
-                },
-                style = LocalVaultTypography.current.title.copy(
-                    letterSpacing = 2.sp,
-                    fontWeight = FontWeight.Medium
-                ),
-                color = if (isLockout) VaultColors.AccentCrimson else VaultColors.TextPrimary
-            )
-
-            Spacer(modifier = Modifier.height(spacing.xs))
-
-            Text(
-                text = when {
-                    isLockout -> "Security cooldown active: ${lockoutSeconds}s"
-                    isSetupMode && setupStep == SetupStep.ENTER_PIN -> "Enter $selectedPinLength digits for your master cryptographic key"
-                    isSetupMode && setupStep == SetupStep.CONFIRM_PIN -> "Re-enter the $selectedPinLength digits to verify match"
-                    isSetupMode && setupStep == SetupStep.BIOMETRIC_CONFIG -> biometricStatusDesc
-                    failedAttempts > 0 -> "Security alert: ${5 - failedAttempts} attempts remaining before hardware lockout"
-                    else -> "Hardware Enclave • PBKDF2 Salted"
-                },
-                style = LocalVaultTypography.current.bodySmall,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.padding(horizontal = spacing.l),
-                color = if (isLockout || failedAttempts > 0) VaultColors.AccentAmber else VaultColors.TextTertiary
-            )
+        // Dynamic Lock Screen Visual Style Layer
+        if (lockScreenStyle == LockScreenStyle.CYBERPUNK_HUD) {
+            CyberpunkHudOverlay()
+        } else {
+            FrostedGlassAmbientOverlay()
         }
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(vertical = spacing.screenVertical),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
+            // Top Security Identity Element
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.padding(top = spacing.m)
+            ) {
+                // Style-Specific Clearance Banner
+                if (lockScreenStyle == LockScreenStyle.CYBERPUNK_HUD) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(VaultColors.AccentCyan.copy(alpha = 0.12f))
+                            .border(1.dp, VaultColors.AccentCyan.copy(alpha = 0.45f), RoundedCornerShape(4.dp))
+                            .padding(horizontal = 10.dp, vertical = 3.dp)
+                    ) {
+                        Text(
+                            text = "// HARDWARE ENCLAVE // SHA-256 SALT // TACTICAL HUD",
+                            style = LocalVaultTypography.current.monospaceAccented.copy(
+                                fontSize = 9.sp,
+                                letterSpacing = 1.4.sp,
+                                fontWeight = FontWeight.Bold
+                            ),
+                            color = VaultColors.AccentCyan
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(spacing.s))
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .background(Color.White.copy(alpha = 0.08f))
+                            .border(1.dp, Color.White.copy(alpha = 0.22f), CircleShape)
+                            .padding(horizontal = 14.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = "✧ VisionOS Enclave ✧",
+                            style = LocalVaultTypography.current.caption.copy(
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Medium,
+                                letterSpacing = 1.sp
+                            ),
+                            color = VaultColors.TextSecondary
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(spacing.s))
+                }
+
+                VaultCoreOrb(
+                    modifier = Modifier.size(if (lockScreenStyle == LockScreenStyle.CYBERPUNK_HUD) 104.dp else 98.dp),
+                    isUnlocked = false,
+                    accentColor = if (isLockout) VaultColors.AccentCrimson else if (lockScreenStyle == LockScreenStyle.CYBERPUNK_HUD) VaultColors.AccentCyan else Color(0xFF8B5CF6)
+                )
+
+                Spacer(modifier = Modifier.height(spacing.m))
+
+                Text(
+                    text = when {
+                        isLockout -> "VAULT LOCKED"
+                        isSetupMode && setupStep == SetupStep.ENTER_PIN -> "CREATE MASTER PASSCODE"
+                        isSetupMode && setupStep == SetupStep.CONFIRM_PIN -> "CONFIRM MASTER PASSCODE"
+                        isSetupMode && setupStep == SetupStep.BIOMETRIC_CONFIG -> "BIOMETRIC ENCLAVE"
+                        else -> if (lockScreenStyle == LockScreenStyle.CYBERPUNK_HUD) "TACTICAL AUTHENTICATE" else "AUTHENTICATE"
+                    },
+                    style = LocalVaultTypography.current.title.copy(
+                        letterSpacing = if (lockScreenStyle == LockScreenStyle.CYBERPUNK_HUD) 2.5.sp else 1.8.sp,
+                        fontFamily = if (lockScreenStyle == LockScreenStyle.CYBERPUNK_HUD) FontFamily.Monospace else FontFamily.Default,
+                        fontWeight = FontWeight.Medium
+                    ),
+                    color = if (isLockout) VaultColors.AccentCrimson else VaultColors.TextPrimary
+                )
+
+                Spacer(modifier = Modifier.height(spacing.xs))
+
+                Text(
+                    text = when {
+                        isLockout -> "Security cooldown active: ${lockoutSeconds}s"
+                        isSetupMode && setupStep == SetupStep.ENTER_PIN -> "Enter $selectedPinLength digits for your master cryptographic key"
+                        isSetupMode && setupStep == SetupStep.CONFIRM_PIN -> "Re-enter the $selectedPinLength digits to verify match"
+                        isSetupMode && setupStep == SetupStep.BIOMETRIC_CONFIG -> biometricStatusDesc
+                        failedAttempts > 0 -> "Security alert: ${5 - failedAttempts} attempts remaining before hardware lockout"
+                        else -> if (lockScreenStyle == LockScreenStyle.CYBERPUNK_HUD) "PBKDF2 Hardware Keystore • System Clearance Active" else "Hardware Enclave • PBKDF2 Salted"
+                    },
+                    style = LocalVaultTypography.current.bodySmall.copy(
+                        fontFamily = if (lockScreenStyle == LockScreenStyle.CYBERPUNK_HUD) FontFamily.Monospace else FontFamily.Default,
+                        fontSize = if (lockScreenStyle == LockScreenStyle.CYBERPUNK_HUD) 11.sp else 12.sp
+                    ),
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(horizontal = spacing.l),
+                    color = if (isLockout || failedAttempts > 0) VaultColors.AccentAmber else VaultColors.TextTertiary
+                )
+            }
 
         // Setup PIN Length Selector (Only during first-step setup)
         if (isSetupMode && setupStep == SetupStep.ENTER_PIN) {
@@ -447,7 +516,8 @@ fun AuthScreen(
                     pinLength = currentRequiredLength,
                     enteredCount = enteredPin.length,
                     isLockout = isLockout,
-                    isError = errorMessage != null
+                    isError = errorMessage != null,
+                    lockScreenStyle = lockScreenStyle
                 )
 
                 Spacer(modifier = Modifier.height(spacing.m))
@@ -477,11 +547,13 @@ fun AuthScreen(
                 horizontalArrangement = Arrangement.spacedBy(spacing.m),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                val chipShape = if (lockScreenStyle == LockScreenStyle.CYBERPUNK_HUD) RoundedCornerShape(8.dp) else CircleShape
+
                 Surface(
                     onClick = {
                         triggerBiometricAuth(BiometricAuthMode.FINGERPRINT)
                     },
-                    shape = RoundedCornerShape(20.dp),
+                    shape = chipShape,
                     color = if (activeBiometricMode == BiometricAuthMode.FINGERPRINT) VaultColors.SurfaceHighlight else VaultColors.SurfaceElevated,
                     border = BorderStroke(1.dp, if (activeBiometricMode == BiometricAuthMode.FINGERPRINT) VaultColors.AccentCyan else VaultColors.GlassBorderSubtle),
                     modifier = Modifier.testTag("auth_fingerprint_chip")
@@ -498,8 +570,11 @@ fun AuthScreen(
                             modifier = Modifier.size(18.dp)
                         )
                         Text(
-                            text = "Fingerprint",
-                            style = LocalVaultTypography.current.bodySmall.copy(fontWeight = FontWeight.Medium),
+                            text = if (lockScreenStyle == LockScreenStyle.CYBERPUNK_HUD) "[ FINGERPRINT ]" else "Fingerprint",
+                            style = LocalVaultTypography.current.bodySmall.copy(
+                                fontWeight = FontWeight.Medium,
+                                fontFamily = if (lockScreenStyle == LockScreenStyle.CYBERPUNK_HUD) FontFamily.Monospace else FontFamily.Default
+                            ),
                             color = VaultColors.TextPrimary
                         )
                     }
@@ -509,7 +584,7 @@ fun AuthScreen(
                     onClick = {
                         triggerBiometricAuth(BiometricAuthMode.FACE)
                     },
-                    shape = RoundedCornerShape(20.dp),
+                    shape = chipShape,
                     color = if (activeBiometricMode == BiometricAuthMode.FACE) VaultColors.SurfaceHighlight else VaultColors.SurfaceElevated,
                     border = BorderStroke(1.dp, if (activeBiometricMode == BiometricAuthMode.FACE) VaultColors.AccentEmerald else VaultColors.GlassBorderSubtle),
                     modifier = Modifier.testTag("auth_facelock_chip")
@@ -526,8 +601,11 @@ fun AuthScreen(
                             modifier = Modifier.size(18.dp)
                         )
                         Text(
-                            text = "Face Lock",
-                            style = LocalVaultTypography.current.bodySmall.copy(fontWeight = FontWeight.Medium),
+                            text = if (lockScreenStyle == LockScreenStyle.CYBERPUNK_HUD) "[ FACE SCAN ]" else "Face Lock",
+                            style = LocalVaultTypography.current.bodySmall.copy(
+                                fontWeight = FontWeight.Medium,
+                                fontFamily = if (lockScreenStyle == LockScreenStyle.CYBERPUNK_HUD) FontFamily.Monospace else FontFamily.Default
+                            ),
                             color = VaultColors.TextPrimary
                         )
                     }
@@ -537,7 +615,7 @@ fun AuthScreen(
                     onClick = {
                         triggerBiometricAuth(BiometricAuthMode.VOICE)
                     },
-                    shape = RoundedCornerShape(20.dp),
+                    shape = chipShape,
                     color = if (activeBiometricMode == BiometricAuthMode.VOICE) VaultColors.SurfaceHighlight else VaultColors.SurfaceElevated,
                     border = BorderStroke(1.dp, if (activeBiometricMode == BiometricAuthMode.VOICE) VaultColors.AccentAmber else VaultColors.GlassBorderSubtle),
                     modifier = Modifier.testTag("auth_voicelock_chip")
@@ -554,8 +632,11 @@ fun AuthScreen(
                             modifier = Modifier.size(18.dp)
                         )
                         Text(
-                            text = "Voice Lock",
-                            style = LocalVaultTypography.current.bodySmall.copy(fontWeight = FontWeight.Medium),
+                            text = if (lockScreenStyle == LockScreenStyle.CYBERPUNK_HUD) "[ VOICE RADAR ]" else "Voice Lock",
+                            style = LocalVaultTypography.current.bodySmall.copy(
+                                fontWeight = FontWeight.Medium,
+                                fontFamily = if (lockScreenStyle == LockScreenStyle.CYBERPUNK_HUD) FontFamily.Monospace else FontFamily.Default
+                            ),
                             color = VaultColors.TextPrimary
                         )
                     }
@@ -577,7 +658,8 @@ fun AuthScreen(
                     }
                 },
                 onBiometricClick = if (!isSetupMode) { { triggerBiometricAuth(activeBiometricMode) } } else null,
-                isBiometricAvailable = !isSetupMode
+                isBiometricAvailable = !isSetupMode,
+                lockScreenStyle = lockScreenStyle
             )
         } else if (isLockout) {
             Column(
@@ -633,6 +715,7 @@ fun AuthScreen(
             Spacer(modifier = Modifier.height(20.dp))
         }
     }
+}
 
     // Emergency Wipe Confirmation Modal
     if (showEmergencyWipeDialog) {
