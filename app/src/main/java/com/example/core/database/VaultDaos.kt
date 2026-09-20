@@ -20,7 +20,7 @@ interface VaultDao {
     @Query("SELECT * FROM vault_items WHERE isTrash = 0 AND category = :category ORDER BY createdAt DESC")
     fun getItemsByCategory(category: String): Flow<List<VaultItemEntity>>
 
-    @Query("SELECT * FROM vault_items WHERE isTrash = 0 AND (category = 'DOCUMENT' OR category = 'TEXT' OR title LIKE '%.pdf' OR title LIKE '%.doc' OR title LIKE '%.docx' OR title LIKE '%.txt' OR title LIKE '%.rtf' OR title LIKE '%.md' OR title LIKE '%.csv' OR title LIKE '%.json' OR title LIKE '%.xml' OR title LIKE '%.odt' OR title LIKE '%.epub' OR title LIKE '%.log') ORDER BY createdAt DESC")
+    @Query("SELECT * FROM vault_items WHERE isTrash = 0 AND (category = 'DOCUMENT' OR category = 'TEXT' OR category = 'FILE' OR title LIKE '%.pdf' OR title LIKE '%.doc' OR title LIKE '%.docx' OR title LIKE '%.txt' OR title LIKE '%.rtf' OR title LIKE '%.md' OR title LIKE '%.csv' OR title LIKE '%.json' OR title LIKE '%.xml' OR title LIKE '%.odt' OR title LIKE '%.epub' OR title LIKE '%.log' OR title LIKE '%.png' OR title LIKE '%.jpg' OR title LIKE '%.jpeg') ORDER BY createdAt DESC")
     fun getAllDocuments(): Flow<List<VaultItemEntity>>
 
     @Query("SELECT * FROM vault_items WHERE isTrash = 0 AND (category = 'IMAGE' OR category = 'VIDEO' OR category = 'AUDIO') ORDER BY createdAt DESC")

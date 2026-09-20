@@ -386,4 +386,46 @@ class VaultStorageEngineTest {
         assertEquals(0, reportBefore.missingPhysicalFiles.size)
         assertEquals(0, reportBefore.orphanedPhysicalFiles.size)
     }
+
+    @Test
+    fun `15 verify PDF and image uploads encrypt store and decrypt successfully`() = runBlocking {
+        // Test PDF Document Upload & Retrieval
+        val samplePdfContent = "%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n%%EOF".toByteArray(Charsets.UTF_8)
+        val pdfResult = repository.importFileFromStream(
+            stream = ByteArrayInputStream(samplePdfContent),
+            fileName = "Official_Statement.pdf",
+            mimeType = "application/pdf"
+        )
+        assertTrue("PDF upload must succeed", pdfResult.isSuccess)
+        val pdfItem = pdfResult.getOrThrow()
+        assertEquals("Official_Statement.pdf", pdfItem.title)
+        assertEquals("DOCUMENT", pdfItem.category)
+        assertEquals(samplePdfContent.size.toLong(), pdfItem.sizeBytes)
+
+        val decryptedPdf = repository.decryptItemBytes(pdfItem).getOrThrow()
+        assertEquals(String(samplePdfContent), String(decryptedPdf))
+
+        // Test Image Upload & Retrieval
+        val sampleImageBytes = byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D)
+        val imageResult = repository.importFileFromStream(
+            stream = ByteArrayInputStream(sampleImageBytes),
+            fileName = "Confidential_Photo.png",
+            mimeType = "image/png"
+        )
+        assertTrue("Image upload must succeed", imageResult.isSuccess)
+        val imageItem = imageResult.getOrThrow()
+        assertEquals("Confidential_Photo.png", imageItem.title)
+        assertEquals("IMAGE", imageItem.category)
+        assertEquals(sampleImageBytes.size.toLong(), imageItem.sizeBytes)
+
+        val decryptedImage = repository.decryptItemBytes(imageItem).getOrThrow()
+        assertTrue("Decrypted image bytes must match sample", sampleImageBytes.contentEquals(decryptedImage))
+
+        // Verify both appear in allDocuments / allMedia flows
+        val allDocs = repository.allDocuments.first()
+        assertTrue("allDocuments must contain uploaded PDF", allDocs.any { it.id == pdfItem.id })
+
+        val allMedia = repository.allMedia.first()
+        assertTrue("allMedia must contain uploaded image", allMedia.any { it.id == imageItem.id })
+    }
 }

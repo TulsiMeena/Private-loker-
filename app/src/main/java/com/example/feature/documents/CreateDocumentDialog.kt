@@ -21,6 +21,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.EditNote
+import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.TableChart
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -61,6 +62,13 @@ val SupportedCreationFormats = listOf(
         mimeType = "text/plain",
         icon = Icons.Default.Description,
         defaultTemplate = ""
+    ),
+    DocumentCreationFormat(
+        title = "PDF Document",
+        extension = "pdf",
+        mimeType = "application/pdf",
+        icon = Icons.Default.PictureAsPdf,
+        defaultTemplate = "%PDF-1.4\n% Vault Secure Encrypted PDF Document\n"
     ),
     DocumentCreationFormat(
         title = "Markdown",

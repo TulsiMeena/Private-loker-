@@ -28,6 +28,7 @@ enum class DocumentTypeFilter(val displayName: String, val extensions: List<Stri
     JSON("JSON", listOf("json")),
     XML("XML", listOf("xml")),
     RTF("RTF", listOf("rtf")),
+    IMAGES("Images (JPG/PNG/WEBP)", listOf("jpg", "jpeg", "png", "webp", "gif", "bmp")),
     OTHER("Other Documents", listOf("odt", "epub", "log", "note", "yaml", "yml"))
 }
 

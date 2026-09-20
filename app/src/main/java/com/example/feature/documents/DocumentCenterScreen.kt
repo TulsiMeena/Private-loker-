@@ -134,7 +134,7 @@ fun DocumentCenterScreen(
         if (uris.isNotEmpty()) {
             importController.startImport(
                 uris = uris,
-                targetCategory = VaultCategory.DOCUMENT,
+                targetCategory = null,
                 targetFolderId = uiState.currentFolder?.id
             )
         }
@@ -324,6 +324,18 @@ fun DocumentCenterScreen(
                             imageVector = Icons.Default.CheckCircle,
                             contentDescription = "Select Multiple",
                             tint = if (uiState.isMultiSelectActive) VaultColors.AccentCyan else VaultColors.TextSecondary
+                        )
+                    }
+
+                    // Import document or file button
+                    IconButton(
+                        onClick = { documentPickerLauncher.launch(arrayOf("*/*")) },
+                        modifier = Modifier.testTag("doc_top_import_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.NoteAdd,
+                            contentDescription = "Import Document or File",
+                            tint = VaultColors.AccentCyan
                         )
                     }
                 },
@@ -644,7 +656,7 @@ fun DocumentCenterScreen(
                                     colors = ButtonDefaults.buttonColors(containerColor = VaultColors.AccentCyan),
                                     modifier = Modifier.testTag("doc_center_empty_import_button")
                                 ) {
-                                    Text("Bulk Import", color = VaultColors.Canvas, fontWeight = FontWeight.Bold)
+                                    Text("Import PDF / Files", color = VaultColors.Canvas, fontWeight = FontWeight.Bold)
                                 }
 
                                 OutlinedButton(

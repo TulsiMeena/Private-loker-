@@ -60,6 +60,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlin.math.cos
+import kotlin.math.sin
 import com.example.core.designsystem.LocalVaultCornerRadius
 import com.example.core.designsystem.LocalVaultSpacing
 import com.example.core.designsystem.LocalVaultTypography
@@ -116,7 +118,7 @@ fun VaultCoreOrb(
         initialValue = 0f,
         targetValue = if (isActiveAnimating) 360f else 0f,
         animationSpec = infiniteRepeatable(
-            animation = tween(28000, easing = LinearEasing),
+            animation = tween(16000, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
         label = "outerRotation"
@@ -126,20 +128,40 @@ fun VaultCoreOrb(
         initialValue = 360f,
         targetValue = if (isActiveAnimating) 0f else 360f,
         animationSpec = infiniteRepeatable(
-            animation = tween(18000, easing = LinearEasing),
+            animation = tween(10000, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
         label = "innerRotation"
     )
 
-    val pulseScale by infiniteTransition.animateFloat(
-        initialValue = 0.94f,
-        targetValue = if (isActiveAnimating) 1.04f else 0.98f,
+    val radarAngle by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = if (isActiveAnimating) 360f else 0f,
         animationSpec = infiniteRepeatable(
-            animation = tween(2400, easing = FastOutSlowInEasing),
+            animation = tween(3500, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "radarAngle"
+    )
+
+    val pulseScale by infiniteTransition.animateFloat(
+        initialValue = 0.92f,
+        targetValue = if (isActiveAnimating) 1.06f else 0.98f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1800, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
         ),
         label = "corePulse"
+    )
+
+    val rippleWave by infiniteTransition.animateFloat(
+        initialValue = 0.5f,
+        targetValue = 1.35f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(2200, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "rippleWave"
     )
 
     val animatedColor by animateColorAsState(
@@ -156,23 +178,33 @@ fun VaultCoreOrb(
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             val center = Offset(size.width / 2f, size.height / 2f)
-            val baseRadius = size.minDimension / 2f * 0.85f
+            val baseRadius = size.minDimension / 2f * 0.82f
 
-            // 1. Soft radial ambient glow
+            // 1. Expanding ultrasonic ripple wave
+            val waveAlpha = ((1.35f - rippleWave) / 0.85f).coerceIn(0f, 0.45f)
+            drawCircle(
+                color = animatedColor.copy(alpha = waveAlpha),
+                radius = baseRadius * rippleWave,
+                center = center,
+                style = Stroke(width = 1.5.dp.toPx())
+            )
+
+            // 2. Multi-layer ambient energy core
             drawCircle(
                 brush = Brush.radialGradient(
                     colors = listOf(
-                        animatedColor.copy(alpha = 0.12f * pulseScale),
+                        animatedColor.copy(alpha = 0.28f * pulseScale),
+                        animatedColor.copy(alpha = 0.08f),
                         Color.Transparent
                     ),
                     center = center,
-                    radius = baseRadius * 1.3f
+                    radius = baseRadius * 1.35f
                 ),
-                radius = baseRadius * 1.3f,
+                radius = baseRadius * 1.35f,
                 center = center
             )
 
-            // 2. Outer thin hairline ring
+            // 3. Outer precision notched boundary
             drawCircle(
                 color = VaultColors.GlassBorderMedium,
                 radius = baseRadius,
@@ -180,64 +212,123 @@ fun VaultCoreOrb(
                 style = Stroke(width = 1.dp.toPx())
             )
 
-            // 3. Segmented outer arc indicating active security
-            val arcAngle = 75f
+            // 4. Circular holographic radar scanner sweep
             drawArc(
-                color = animatedColor.copy(alpha = 0.8f),
+                brush = Brush.sweepGradient(
+                    colors = listOf(
+                        Color.Transparent,
+                        animatedColor.copy(alpha = 0.02f),
+                        animatedColor.copy(alpha = 0.35f)
+                    ),
+                    center = center
+                ),
+                startAngle = radarAngle - 60f,
+                sweepAngle = 60f,
+                useCenter = true,
+                topLeft = Offset(center.x - baseRadius, center.y - baseRadius),
+                size = androidx.compose.ui.geometry.Size(baseRadius * 2f, baseRadius * 2f)
+            )
+
+            // 5. Dual orbiting segmented data shields
+            val arcAngle = 70f
+            drawArc(
+                color = animatedColor.copy(alpha = 0.85f),
                 startAngle = rotationOuter,
                 sweepAngle = arcAngle,
                 useCenter = false,
                 topLeft = Offset(center.x - baseRadius, center.y - baseRadius),
                 size = androidx.compose.ui.geometry.Size(baseRadius * 2f, baseRadius * 2f),
-                style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round)
+                style = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round)
             )
 
             drawArc(
-                color = animatedColor.copy(alpha = 0.4f),
+                color = animatedColor.copy(alpha = 0.5f),
                 startAngle = rotationOuter + 180f,
-                sweepAngle = arcAngle / 2,
+                sweepAngle = arcAngle * 0.7f,
                 useCenter = false,
                 topLeft = Offset(center.x - baseRadius, center.y - baseRadius),
                 size = androidx.compose.ui.geometry.Size(baseRadius * 2f, baseRadius * 2f),
-                style = Stroke(width = 1.5f.dp.toPx(), cap = StrokeCap.Round)
+                style = Stroke(width = 1.8.dp.toPx(), cap = StrokeCap.Round)
             )
 
-            // 4. Middle concentric precision ring
-            val midRadius = baseRadius * 0.72f
+            // 6. Cardinal reticle tick marks (12 ticks like an atomic compass)
+            val tickRadius = baseRadius * 0.90f
+            for (i in 0 until 12) {
+                val angleDeg = (i * 30f) + (rotationOuter * 0.2f)
+                val angleRad = Math.toRadians(angleDeg.toDouble())
+                val isMajor = i % 3 == 0
+                val tickLen = if (isMajor) 7.dp.toPx() else 3.5.dp.toPx()
+                val startX = (center.x + cos(angleRad) * (tickRadius - tickLen)).toFloat()
+                val startY = (center.y + sin(angleRad) * (tickRadius - tickLen)).toFloat()
+                val endX = (center.x + cos(angleRad) * tickRadius).toFloat()
+                val endY = (center.y + sin(angleRad) * tickRadius).toFloat()
+
+                drawLine(
+                    color = if (isMajor) animatedColor.copy(alpha = 0.9f) else VaultColors.TextTertiary.copy(alpha = 0.4f),
+                    start = Offset(startX, startY),
+                    end = Offset(endX, endY),
+                    strokeWidth = if (isMajor) 1.5.dp.toPx() else 1.dp.toPx()
+                )
+            }
+
+            // 7. Middle counter-rotating sub-enclave ring
+            val midRadius = baseRadius * 0.68f
             drawCircle(
-                color = VaultColors.SurfaceHighlight.copy(alpha = 0.6f),
+                color = VaultColors.SurfaceHighlight.copy(alpha = 0.5f),
                 radius = midRadius,
                 center = center,
                 style = Stroke(width = 1.dp.toPx())
             )
 
-            // Middle arc opposite rotation
             drawArc(
-                color = animatedColor.copy(alpha = 0.6f),
+                color = animatedColor.copy(alpha = 0.75f),
                 startAngle = rotationInner,
-                sweepAngle = 45f,
+                sweepAngle = 55f,
                 useCenter = false,
                 topLeft = Offset(center.x - midRadius, center.y - midRadius),
                 size = androidx.compose.ui.geometry.Size(midRadius * 2f, midRadius * 2f),
                 style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round)
             )
 
-            // 5. Inner Core Node
-            val innerRadius = baseRadius * 0.42f * pulseScale
+            drawArc(
+                color = animatedColor.copy(alpha = 0.4f),
+                startAngle = rotationInner + 180f,
+                sweepAngle = 40f,
+                useCenter = false,
+                topLeft = Offset(center.x - midRadius, center.y - midRadius),
+                size = androidx.compose.ui.geometry.Size(midRadius * 2f, midRadius * 2f),
+                style = Stroke(width = 1.5.dp.toPx(), cap = StrokeCap.Round)
+            )
+
+            // 8. Quantum satellite orbit nodes
+            val nodeRadius = midRadius * 0.88f
+            for (nodeIdx in 0 until 3) {
+                val nodeAngle = Math.toRadians((rotationOuter * 1.5f + nodeIdx * 120.0))
+                val nodeX = (center.x + cos(nodeAngle) * nodeRadius).toFloat()
+                val nodeY = (center.y + sin(nodeAngle) * nodeRadius).toFloat()
+                drawCircle(
+                    color = animatedColor.copy(alpha = 0.85f),
+                    radius = 2.5.dp.toPx(),
+                    center = Offset(nodeX, nodeY)
+                )
+            }
+
+            // 9. Inner Central Core Node
+            val innerRadius = baseRadius * 0.44f * pulseScale
             drawCircle(
                 color = VaultColors.SurfaceElevated,
                 radius = innerRadius,
                 center = center
             )
             drawCircle(
-                color = animatedColor.copy(alpha = 0.7f),
+                color = animatedColor.copy(alpha = 0.85f),
                 radius = innerRadius,
                 center = center,
-                style = Stroke(width = 1.5f.dp.toPx())
+                style = Stroke(width = 2.dp.toPx())
             )
         }
 
-        // Center Icon inside orb
+        // Center Icon inside orb with subtle breathing scale
         Icon(
             imageVector = if (isUnlocked) Icons.Filled.LockOpen else Icons.Filled.Shield,
             contentDescription = if (isUnlocked) "Vault Unlocked" else "Vault Secured",
@@ -643,7 +734,8 @@ fun VaultPipIndicator(
 }
 
 /**
- * Animated Cyberpunk HUD background overlay with fine grid lines and a laser scanning radar bar.
+ * Animated Cyberpunk HUD background overlay with fine grid lines, laser scanning radar bar,
+ * tactical corner targeting reticles, and matrix data stream markers.
  */
 @Composable
 fun CyberpunkHudOverlay(modifier: Modifier = Modifier) {
@@ -652,22 +744,32 @@ fun CyberpunkHudOverlay(modifier: Modifier = Modifier) {
         initialValue = 0f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
-            animation = tween(4000, easing = LinearEasing),
+            animation = tween(3200, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
         label = "scan_laser"
     )
 
+    val pulseGlow by infiniteTransition.animateFloat(
+        initialValue = 0.3f,
+        targetValue = 0.85f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1800, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "hud_pulse"
+    )
+
     Canvas(modifier = modifier.fillMaxSize()) {
         val width = size.width
         val height = size.height
-        val gridSpacing = 40.dp.toPx()
+        val gridSpacing = 44.dp.toPx()
 
         // Subtle sci-fi grid
         var x = 0f
         while (x <= width) {
             drawLine(
-                color = VaultColors.AccentCyan.copy(alpha = 0.04f),
+                color = VaultColors.AccentCyan.copy(alpha = 0.035f),
                 start = Offset(x, 0f),
                 end = Offset(x, height),
                 strokeWidth = 1f
@@ -678,7 +780,7 @@ fun CyberpunkHudOverlay(modifier: Modifier = Modifier) {
         var y = 0f
         while (y <= height) {
             drawLine(
-                color = VaultColors.AccentCyan.copy(alpha = 0.04f),
+                color = VaultColors.AccentCyan.copy(alpha = 0.035f),
                 start = Offset(0f, y),
                 end = Offset(width, y),
                 strokeWidth = 1f
@@ -686,57 +788,105 @@ fun CyberpunkHudOverlay(modifier: Modifier = Modifier) {
             y += gridSpacing
         }
 
-        // Animated laser sweep bar
+        // Corner targeting tactical brackets
+        val bracketSize = 24.dp.toPx()
+        val bracketMargin = 16.dp.toPx()
+        val bracketColor = VaultColors.AccentCyan.copy(alpha = 0.4f * pulseGlow)
+        val bracketStroke = 1.5.dp.toPx()
+
+        // Top-left bracket
+        drawLine(bracketColor, Offset(bracketMargin, bracketMargin), Offset(bracketMargin + bracketSize, bracketMargin), bracketStroke)
+        drawLine(bracketColor, Offset(bracketMargin, bracketMargin), Offset(bracketMargin, bracketMargin + bracketSize), bracketStroke)
+
+        // Top-right bracket
+        drawLine(bracketColor, Offset(width - bracketMargin - bracketSize, bracketMargin), Offset(width - bracketMargin, bracketMargin), bracketStroke)
+        drawLine(bracketColor, Offset(width - bracketMargin, bracketMargin), Offset(width - bracketMargin, bracketMargin + bracketSize), bracketStroke)
+
+        // Bottom-left bracket
+        drawLine(bracketColor, Offset(bracketMargin, height - bracketMargin), Offset(bracketMargin + bracketSize, height - bracketMargin), bracketStroke)
+        drawLine(bracketColor, Offset(bracketMargin, height - bracketMargin - bracketSize), Offset(bracketMargin, height - bracketMargin), bracketStroke)
+
+        // Bottom-right bracket
+        drawLine(bracketColor, Offset(width - bracketMargin - bracketSize, height - bracketMargin), Offset(width - bracketMargin, height - bracketMargin), bracketStroke)
+        drawLine(bracketColor, Offset(width - bracketMargin, height - bracketMargin - bracketSize), Offset(width - bracketMargin, height - bracketMargin), bracketStroke)
+
+        // Animated laser sweep bar with neon blur gradient
         val scanY = height * scanProgress
         drawLine(
             brush = Brush.horizontalGradient(
                 listOf(
                     Color.Transparent,
-                    VaultColors.AccentCyan.copy(alpha = 0.25f),
-                    VaultColors.AccentCyan.copy(alpha = 0.50f),
-                    VaultColors.AccentCyan.copy(alpha = 0.25f),
+                    VaultColors.AccentCyan.copy(alpha = 0.15f),
+                    VaultColors.AccentCyan.copy(alpha = 0.65f),
+                    VaultColors.AccentCyan.copy(alpha = 0.15f),
                     Color.Transparent
                 )
             ),
             start = Offset(0f, scanY),
             end = Offset(width, scanY),
-            strokeWidth = 2.dp.toPx()
+            strokeWidth = 2.5.dp.toPx()
         )
     }
 }
 
 /**
- * Ambient Frosted Glass background overlay with subtle floating ethereal glow orbs.
+ * Ambient Frosted Glass background overlay with subtle floating ethereal glow orbs and dynamic bokeh.
  */
 @Composable
 fun FrostedGlassAmbientOverlay(modifier: Modifier = Modifier) {
     val infiniteTransition = rememberInfiniteTransition(label = "glass_ambient")
     val pulse by infiniteTransition.animateFloat(
-        initialValue = 0.88f,
-        targetValue = 1.12f,
+        initialValue = 0.85f,
+        targetValue = 1.15f,
         animationSpec = infiniteRepeatable(
-            animation = tween(3500, easing = FastOutSlowInEasing),
+            animation = tween(4000, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
         ),
         label = "ambient_pulse"
     )
 
+    val driftY by infiniteTransition.animateFloat(
+        initialValue = -15f,
+        targetValue = 15f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(6000, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "ambient_drift"
+    )
+
     Canvas(modifier = modifier.fillMaxSize()) {
-        val center = Offset(size.width * 0.5f, size.height * 0.32f)
-        val radius = size.minDimension * 0.55f * pulse
+        val center1 = Offset(size.width * 0.5f, (size.height * 0.28f) + driftY)
+        val radius1 = size.minDimension * 0.55f * pulse
 
         drawCircle(
             brush = Brush.radialGradient(
                 colors = listOf(
-                    VaultColors.AccentCyan.copy(alpha = 0.12f),
-                    Color(0xFF8B5CF6).copy(alpha = 0.07f),
+                    VaultColors.AccentCyan.copy(alpha = 0.14f),
+                    Color(0xFF8B5CF6).copy(alpha = 0.08f),
                     Color.Transparent
                 ),
-                center = center,
-                radius = radius
+                center = center1,
+                radius = radius1
             ),
-            center = center,
-            radius = radius
+            center = center1,
+            radius = radius1
+        )
+
+        val center2 = Offset(size.width * 0.8f, size.height * 0.65f)
+        val radius2 = size.minDimension * 0.40f * pulse
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(
+                    Color(0xFF3B82F6).copy(alpha = 0.09f),
+                    Color(0xFF10B981).copy(alpha = 0.05f),
+                    Color.Transparent
+                ),
+                center = center2,
+                radius = radius2
+            ),
+            center = center2,
+            radius = radius2
         )
     }
 }
