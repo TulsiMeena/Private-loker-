@@ -144,6 +144,7 @@ fun ArchiveCenterScreen(
     val importLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
+        viewModel.sessionManager.setSuppressAutoLock(false)
         if (uri != null) {
             scope.launch {
                 try {
@@ -168,6 +169,7 @@ fun ArchiveCenterScreen(
     val exportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/zip")
     ) { uri: Uri? ->
+        viewModel.sessionManager.setSuppressAutoLock(false)
         if (uri != null && itemToExport != null) {
             val item = itemToExport!!
             scope.launch {
@@ -310,7 +312,10 @@ fun ArchiveCenterScreen(
             if (!isMultiSelectMode) {
                 Column(horizontalAlignment = Alignment.End) {
                     FloatingActionButton(
-                        onClick = { importLauncher.launch(arrayOf("application/zip", "application/x-zip-compressed", "*/*")) },
+                        onClick = {
+                            viewModel.sessionManager.setSuppressAutoLock(true)
+                            importLauncher.launch(arrayOf("application/zip", "application/x-zip-compressed", "*/*"))
+                        },
                         containerColor = VaultColors.SurfaceElevated,
                         contentColor = VaultColors.AccentCyan,
                         modifier = Modifier
@@ -386,7 +391,10 @@ fun ArchiveCenterScreen(
             if (archives.isEmpty()) {
                 EmptyArchivePlaceholder(
                     isSearch = searchQuery.isNotBlank(),
-                    onImportClick = { importLauncher.launch(arrayOf("application/zip", "*/*")) },
+                    onImportClick = {
+                        viewModel.sessionManager.setSuppressAutoLock(true)
+                        importLauncher.launch(arrayOf("application/zip", "*/*"))
+                    },
                     onCreateClick = { showCreateArchiveDialog = true }
                 )
             } else {
@@ -536,6 +544,7 @@ fun ArchiveCenterScreen(
             fileName = item.title,
             onDismiss = { itemToExport = null },
             onConfirm = {
+                viewModel.sessionManager.setSuppressAutoLock(true)
                 exportLauncher.launch(item.title)
             }
         )

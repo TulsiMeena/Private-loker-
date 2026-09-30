@@ -45,6 +45,7 @@ class MainActivity : FragmentActivity() {
     private lateinit var homeViewModel: VaultHomeViewModel
     private lateinit var dataLifecycleManager: DataLifecycleManager
     private lateinit var appSettingsManager: AppSettingsManager
+    private lateinit var panicSensorManager: com.example.core.security.PanicSensorManager
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -58,6 +59,14 @@ class MainActivity : FragmentActivity() {
             coroutineScope = lifecycleScope
         )
         biometricManager = DeviceBiometricManager(applicationContext)
+
+        // Sensor panic lockdown (Flip-to-lock & Shake-to-lock)
+        panicSensorManager = com.example.core.security.PanicSensorManager(
+            context = applicationContext,
+            onPanicLockTriggered = {
+                sessionSecurityManager.emergencyLock()
+            }
+        )
 
         // 2. Cryptographic Vault Engine & Access Gate
         val vaultKeyManager = AndroidVaultKeyManager()
@@ -98,6 +107,20 @@ class MainActivity : FragmentActivity() {
             dataLifecycleManager.performCrashRecovery()
             // Auto-clean expired items based on user retention setting
             dataLifecycleManager.executeAutoClean()
+        }
+
+        // Dead-Man's Switch Watchdog: Inactivity Self-Destruct Check
+        val deadManSwitch = com.example.core.security.DeadManSwitchManager.getInstance(applicationContext)
+        if (deadManSwitch.checkAndExecuteSelfDestruct {}) {
+            lifecycleScope.launch {
+                vaultRepository.purgeAllVaultData()
+                sessionSecurityManager.emergencyWipeAllSecuritySettings()
+                vaultRepository.logSecurityEvent(
+                    action = "DEAD_MAN_SWITCH_TRIGGERED",
+                    details = "Inactivity watchdog exceeded limit. Military auto-wipe performed.",
+                    isSuccess = true
+                )
+            }
         }
 
         // Clean caches and temporary working files immediately whenever vault transitions to locked
@@ -154,7 +177,7 @@ class MainActivity : FragmentActivity() {
                     color = VaultCanvas
                 ) {
                     VaultNavGraph(
-                        activity = this,
+                        activity = this@MainActivity,
                         sessionManager = sessionSecurityManager,
                         vaultRepository = vaultRepository,
                         biometricAuthenticator = biometricManager,
@@ -173,10 +196,16 @@ class MainActivity : FragmentActivity() {
             activity = this,
             enabled = sessionSecurityManager.isScreenProtectionEnabled()
         )
+        if (::panicSensorManager.isInitialized) {
+            panicSensorManager.startListening()
+        }
     }
 
     override fun onPause() {
         super.onPause()
+        if (::panicSensorManager.isInitialized) {
+            panicSensorManager.stopListening()
+        }
         sessionSecurityManager.onAppBackgrounded()
         // Shred temporary files and clear thumbnail caches when leaving app
         if (::storageManager.isInitialized) {

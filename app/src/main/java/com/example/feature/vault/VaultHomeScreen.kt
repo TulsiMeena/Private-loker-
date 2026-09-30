@@ -47,6 +47,7 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.NoteAdd
 import androidx.compose.material.icons.filled.PermMedia
 import androidx.compose.material.icons.filled.AutoAwesomeMosaic
+import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
@@ -62,8 +63,10 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
@@ -113,6 +116,7 @@ import java.util.Locale
 @Composable
 fun VaultHomeScreen(
     viewModel: VaultHomeViewModel,
+    sessionManager: com.example.core.security.SessionSecurityManager? = null,
     onCategoryClick: (VaultCategory) -> Unit,
     onSettingsClick: () -> Unit,
     onTrashClick: () -> Unit,
@@ -125,15 +129,82 @@ fun VaultHomeScreen(
     val scope = rememberCoroutineScope()
     val uiState by viewModel.uiState.collectAsState()
 
+    val effectiveSessionManager = remember(sessionManager, context, scope) {
+        sessionManager ?: com.example.core.security.SessionSecurityManager(
+            context = context,
+            secureKeyManager = com.example.core.security.SecureKeyManager(),
+            coroutineScope = scope
+        )
+    }
+
+    val isDecoySession by effectiveSessionManager.isDecoySession.collectAsState()
+
+    val decoyItems = remember {
+        listOf(
+            VaultItemEntity(
+                id = -901L,
+                title = "Weekly Grocery List & Recipes.txt",
+                category = VaultCategory.TEXT.name,
+                encryptedPath = "decoy_1.enc",
+                mimeType = "text/plain",
+                sizeBytes = 2450L,
+                createdAt = System.currentTimeMillis() - 86400000L,
+                modifiedAt = System.currentTimeMillis() - 86400000L,
+                isFavorite = true
+            ),
+            VaultItemEntity(
+                id = -902L,
+                title = "Vacation Travel Itinerary 2026.pdf",
+                category = VaultCategory.DOCUMENT.name,
+                encryptedPath = "decoy_2.enc",
+                mimeType = "application/pdf",
+                sizeBytes = 48200L,
+                createdAt = System.currentTimeMillis() - 172800000L,
+                modifiedAt = System.currentTimeMillis() - 172800000L,
+                isFavorite = false
+            ),
+            VaultItemEntity(
+                id = -903L,
+                title = "Home Maintenance Checklist.txt",
+                category = VaultCategory.TEXT.name,
+                encryptedPath = "decoy_3.enc",
+                mimeType = "text/plain",
+                sizeBytes = 5120L,
+                createdAt = System.currentTimeMillis() - 259200000L,
+                modifiedAt = System.currentTimeMillis() - 259200000L,
+                isFavorite = false
+            )
+        )
+    }
+
+    val effectiveUiState = if (isDecoySession) {
+        uiState.copy(
+            recentItems = decoyItems,
+            favoriteItems = decoyItems.filter { it.isFavorite },
+            totalItemCount = 3,
+            totalSizeBytes = 55770L,
+            categoryStats = mapOf(
+                VaultCategory.TEXT to CategoryStat(VaultCategory.TEXT, 2, 7570L),
+                VaultCategory.DOCUMENT to CategoryStat(VaultCategory.DOCUMENT, 1, 48200L)
+            )
+        )
+    } else {
+        uiState
+    }
+
+    val safeOpenFile: (Long) -> Unit = { id ->
+        if (id < 0L) {
+            Toast.makeText(context, "Decoy Document: Safe preview mode", Toast.LENGTH_SHORT).show()
+        } else {
+            onOpenFile(id)
+        }
+    }
+
     // File Browser ViewModel instance
     val browserViewModel: VaultFileBrowserViewModel = remember {
         VaultFileBrowserViewModel(
             repository = viewModel.repository,
-            sessionManager = com.example.core.security.SessionSecurityManager(
-                context = context,
-                secureKeyManager = com.example.core.security.SecureKeyManager(),
-                coroutineScope = scope
-            )
+            sessionManager = effectiveSessionManager
         )
     }
 
@@ -147,14 +218,18 @@ fun VaultHomeScreen(
     }
     val importState by importController.importState.collectAsState()
 
-    // SAF Document Picker
+    // SAF Document Picker (Files, Photos, PDF, All)
     val safMultiPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenMultipleDocuments()
     ) { uris: List<Uri> ->
+        effectiveSessionManager.setSuppressAutoLock(false)
         if (uris.isNotEmpty()) {
             importController.startImport(uris)
         }
     }
+
+    // Import Options Chooser Bottom Sheet State
+    var showImportChooserSheet by remember { mutableStateOf(false) }
 
     // Modal creation dialogs
     var showCreateNoteDialog by remember { mutableStateOf(false) }
@@ -224,6 +299,18 @@ fun VaultHomeScreen(
                     }
                 },
                 actions = {
+                    // Quick Import Button
+                    IconButton(
+                        onClick = { showImportChooserSheet = true },
+                        modifier = Modifier.testTag("home_top_import_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.UploadFile,
+                            contentDescription = "Import Files / Media / PDF",
+                            tint = VaultColors.AccentCyan
+                        )
+                    }
+
                     // Universal Search Button
                     IconButton(
                         onClick = onNavigateToSearch,
@@ -349,6 +436,19 @@ fun VaultHomeScreen(
                 )
             }
         },
+        floatingActionButton = {
+            FloatingActionButton(
+                onClick = { showImportChooserSheet = true },
+                containerColor = VaultColors.AccentCyan,
+                contentColor = Color.Black,
+                modifier = Modifier.testTag("home_import_fab")
+            ) {
+                Icon(
+                    imageVector = Icons.Default.UploadFile,
+                    contentDescription = "Upload Files or Media"
+                )
+            }
+        },
         containerColor = VaultColors.Canvas,
         modifier = modifier.fillMaxSize()
     ) { paddingValues ->
@@ -365,8 +465,8 @@ fun VaultHomeScreen(
                 when (tab) {
                     WorkspaceTab.WORKSPACE -> {
                         WorkspaceDashboardContent(
-                            uiState = uiState,
-                            onImportClick = { safMultiPicker.launch(arrayOf("*/*")) },
+                            uiState = effectiveUiState,
+                            onImportClick = { showImportChooserSheet = true },
                             onCreateNoteClick = { onCategoryClick(VaultCategory.TEXT) },
                             onCreateCodeClick = { onCategoryClick(VaultCategory.CODE) },
                             onCreateFolderClick = { showCreateFolderDialog = true },
@@ -374,7 +474,7 @@ fun VaultHomeScreen(
                             onCategoryClick = { cat ->
                                 onCategoryClick(cat)
                             },
-                            onOpenFile = onOpenFile,
+                            onOpenFile = safeOpenFile,
                             onClearRecent = { viewModel.clearRecentHistory() },
                             onNavigateToSearch = onNavigateToSearch,
                             onNavigateToOrganize = onNavigateToOrganize
@@ -384,14 +484,14 @@ fun VaultHomeScreen(
                     WorkspaceTab.FILES -> {
                         VaultFileBrowserScreen(
                             viewModel = browserViewModel,
-                            onOpenFile = onOpenFile
+                            onOpenFile = safeOpenFile
                         )
                     }
 
                     WorkspaceTab.FAVORITES -> {
                         FavoritesTabContent(
-                            favoriteItems = uiState.favoriteItems,
-                            onOpenFile = onOpenFile
+                            favoriteItems = effectiveUiState.favoriteItems,
+                            onOpenFile = safeOpenFile
                         )
                     }
 
@@ -426,6 +526,7 @@ fun VaultHomeScreen(
                             onBackClick = { viewModel.selectTab(WorkspaceTab.WORKSPACE) },
                             onNavigateToSecurityCenter = onSettingsClick,
                             onNavigateToTrash = onTrashClick,
+                            onNavigateToIntruderLogs = onSettingsClick,
                             storageManager = viewModel.repository.storageManager,
                             onPurgeVault = {
                                 scope.launch {
@@ -483,6 +584,190 @@ fun VaultHomeScreen(
                 Toast.makeText(context, "Folder created", Toast.LENGTH_SHORT).show()
             }
         )
+    }
+
+    // Import Options Modal Bottom Sheet
+    if (showImportChooserSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showImportChooserSheet = false },
+            containerColor = VaultColors.SurfaceElevated,
+            contentColor = VaultColors.TextPrimary
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp, vertical = 16.dp)
+            ) {
+                Text(
+                    text = "Import Secure Media & Files",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = VaultColors.TextPrimary
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Select what you want to encrypt and store inside your vault",
+                    fontSize = 13.sp,
+                    color = VaultColors.TextSecondary
+                )
+                Spacer(modifier = Modifier.height(20.dp))
+
+                // Option 1: Images & Photos (Media Import)
+                Card(
+                    onClick = {
+                        showImportChooserSheet = false
+                        effectiveSessionManager.setSuppressAutoLock(true)
+                        safMultiPicker.launch(arrayOf("image/*"))
+                    },
+                    colors = CardDefaults.cardColors(containerColor = VaultColors.SurfaceGraphite),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(16.dp)
+                    ) {
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier
+                                .size(44.dp)
+                                .clip(CircleShape)
+                                .background(VaultColors.AccentEmerald.copy(alpha = 0.15f))
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Image,
+                                contentDescription = null,
+                                tint = VaultColors.AccentEmerald,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Photos & Images",
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 15.sp,
+                                color = VaultColors.TextPrimary
+                            )
+                            Text(
+                                text = "Encrypt PNG, JPG, JPEG photos from gallery",
+                                fontSize = 12.sp,
+                                color = VaultColors.TextSecondary
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Option 2: PDF & Documents
+                Card(
+                    onClick = {
+                        showImportChooserSheet = false
+                        effectiveSessionManager.setSuppressAutoLock(true)
+                        safMultiPicker.launch(
+                            arrayOf(
+                                "application/pdf",
+                                "application/msword",
+                                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                "application/vnd.ms-excel",
+                                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                "text/plain",
+                                "text/csv",
+                                "*/*"
+                            )
+                        )
+                    },
+                    colors = CardDefaults.cardColors(containerColor = VaultColors.SurfaceGraphite),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(16.dp)
+                    ) {
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier
+                                .size(44.dp)
+                                .clip(CircleShape)
+                                .background(VaultColors.AccentAmber.copy(alpha = 0.15f))
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.PictureAsPdf,
+                                contentDescription = null,
+                                tint = VaultColors.AccentAmber,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "PDFs & Documents",
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 15.sp,
+                                color = VaultColors.TextPrimary
+                            )
+                            Text(
+                                text = "Import encrypted PDF, doc, txt, and papers",
+                                fontSize = 12.sp,
+                                color = VaultColors.TextSecondary
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Option 3: Any File or Media
+                Card(
+                    onClick = {
+                        showImportChooserSheet = false
+                        effectiveSessionManager.setSuppressAutoLock(true)
+                        safMultiPicker.launch(arrayOf("*/*"))
+                    },
+                    colors = CardDefaults.cardColors(containerColor = VaultColors.SurfaceGraphite),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(16.dp)
+                    ) {
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier
+                                .size(44.dp)
+                                .clip(CircleShape)
+                                .background(VaultColors.AccentCyan.copy(alpha = 0.15f))
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.UploadFile,
+                                contentDescription = null,
+                                tint = VaultColors.AccentCyan,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "All Files & Storage",
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 15.sp,
+                                color = VaultColors.TextPrimary
+                            )
+                            Text(
+                                text = "Browse system storage for any file format",
+                                fontSize = 12.sp,
+                                color = VaultColors.TextSecondary
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+            }
+        }
     }
 }
 

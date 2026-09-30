@@ -74,7 +74,7 @@ data class FileBrowserUiState(
 @OptIn(ExperimentalCoroutinesApi::class)
 class VaultFileBrowserViewModel(
     val repository: VaultRepository,
-    private val sessionManager: SessionSecurityManager
+    val sessionManager: SessionSecurityManager
 ) : ViewModel() {
 
     private val _currentFolderId = MutableStateFlow<Long?>(null)

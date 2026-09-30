@@ -146,6 +146,7 @@ fun CodeTextStudioScreen(
     val importLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenMultipleDocuments()
     ) { uris ->
+        viewModel.sessionManager.setSuppressAutoLock(false)
         if (uris.isNotEmpty()) {
             viewModel.importFiles(context, uris)
         }
@@ -198,7 +199,10 @@ fun CodeTextStudioScreen(
 
                         // Import button
                         IconButton(
-                            onClick = { importLauncher.launch(arrayOf("*/*")) },
+                            onClick = {
+                                viewModel.sessionManager.setSuppressAutoLock(true)
+                                importLauncher.launch(arrayOf("*/*"))
+                            },
                             modifier = Modifier.testTag("studio_import_btn")
                         ) {
                             Icon(Icons.Default.FileUpload, contentDescription = "Import Files", tint = VaultColors.TextSecondary)

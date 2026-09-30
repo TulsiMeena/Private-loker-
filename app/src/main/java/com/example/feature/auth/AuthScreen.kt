@@ -115,6 +115,7 @@ fun AuthScreen(
     failedAttempts: Int,
     isBiometricSupported: Boolean = false,
     isBiometricEnrolled: Boolean = false,
+    isBiometricEnabled: Boolean = true,
     biometricStatusDesc: String = "",
     voiceLockManager: VoiceLockSecurityManager? = null,
     voicePassphrase: String = "Open Private Vault",
@@ -144,6 +145,22 @@ fun AuthScreen(
     var isBiometricScanning by remember { mutableStateOf(false) }
     var isBiometricVerified by remember { mutableStateOf(false) }
     var activeBiometricMode by remember { mutableStateOf(BiometricAuthMode.FINGERPRINT) }
+
+    var lastObservedLockState by remember { mutableStateOf<LockState?>(null) }
+    var hasPromptedBiometricsForSession by remember { mutableStateOf(false) }
+
+    // Automatic entry prompt using BiometricPrompt API for seamless fingerprint/facial recognition entry
+    LaunchedEffect(lockState, isSetupMode, isBiometricEnrolled, isBiometricEnabled) {
+        if (lockState != lastObservedLockState) {
+            lastObservedLockState = lockState
+            hasPromptedBiometricsForSession = false
+        }
+        if (!hasPromptedBiometricsForSession && !isSetupMode && isBiometricEnrolled && isBiometricEnabled && lockState !is LockState.Lockout) {
+            hasPromptedBiometricsForSession = true
+            delay(350L)
+            onBiometricClick()
+        }
+    }
 
     val voiceStatus by (voiceLockManager?.status ?: kotlinx.coroutines.flow.MutableStateFlow(VoiceAuthStatus.Idle)).collectAsState()
     val voiceAmplitude by (voiceLockManager?.amplitude ?: kotlinx.coroutines.flow.MutableStateFlow(0f)).collectAsState()

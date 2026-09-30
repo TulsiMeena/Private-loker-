@@ -54,7 +54,7 @@ data class ArchiveDashboardStats(
 
 class ArchiveCenterViewModel(
     private val repository: VaultRepository,
-    private val sessionManager: SessionSecurityManager,
+    val sessionManager: SessionSecurityManager,
     val zipManager: ZipVaultManager,
     val operationManager: FileOperationManager
 ) : ViewModel() {

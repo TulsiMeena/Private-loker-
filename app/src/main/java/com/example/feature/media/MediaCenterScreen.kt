@@ -2,7 +2,6 @@ package com.example.feature.media
 
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInVertically
@@ -116,19 +115,11 @@ fun MediaCenterScreen(
     var showTagDialog by remember { mutableStateOf(false) }
     var showFolderDialog by remember { mutableStateOf(false) }
 
-    // Multi-select Photo Picker launcher for images & videos
-    val visualMediaLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.PickMultipleVisualMedia()
-    ) { uris ->
-        if (uris.isNotEmpty()) {
-            viewModel.importUris(context, uris)
-        }
-    }
-
-    // Generic OpenMultipleDocuments for audio and other formats
+    // OpenMultipleDocuments for images, videos, audio and other formats
     val openDocumentsLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenMultipleDocuments()
     ) { uris ->
+        sessionManager.setSuppressAutoLock(false)
         if (uris.isNotEmpty()) {
             viewModel.importUris(context, uris)
         }
@@ -202,12 +193,13 @@ fun MediaCenterScreen(
             if (!uiState.isMultiSelectMode) {
                 FloatingActionButton(
                     onClick = {
+                        sessionManager.setSuppressAutoLock(true)
                         if (uiState.currentTab == MediaCategoryTab.AUDIO) {
                             openDocumentsLauncher.launch(arrayOf("audio/*"))
+                        } else if (uiState.currentTab == MediaCategoryTab.VIDEOS) {
+                            openDocumentsLauncher.launch(arrayOf("video/*"))
                         } else {
-                            visualMediaLauncher.launch(
-                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)
-                            )
+                            openDocumentsLauncher.launch(arrayOf("image/*", "video/*"))
                         }
                     },
                     containerColor = VaultColors.AccentCyan,

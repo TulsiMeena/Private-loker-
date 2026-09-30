@@ -58,7 +58,7 @@ class SecureBackupManager(
     private val securityAuditDao: SecurityAuditDao,
     private val vaultDao: VaultDao,
     private val vaultFolderDao: VaultFolderDao,
-    private val sessionManager: SessionSecurityManager,
+    val sessionManager: SessionSecurityManager,
     val reminderManager: BackupReminderManager
 ) : EncryptedBackupManager {
 

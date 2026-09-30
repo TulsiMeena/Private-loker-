@@ -72,12 +72,21 @@ class SessionSecurityManager(
         private const val KEY_LAST_UNLOCK_TIMESTAMP = "sec_last_unlock_timestamp"
         private const val KEY_LAST_INTEGRITY_CHECK = "sec_last_integrity_check"
         private const val KEY_LAST_INTEGRITY_SUMMARY = "sec_last_integrity_summary"
+        private const val KEY_DECOY_PIN_HASH = "sec_decoy_pin_hash"
+        private const val KEY_DECOY_PIN_SALT = "sec_decoy_pin_salt"
+        private const val KEY_CALCULATOR_DISGUISE = "sec_calc_disguise_enabled"
 
         const val MAX_FAILED_ATTEMPTS = 5
         const val BASE_LOCKOUT_SECONDS = 30
     }
 
     private val prefs: SharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+
+    private val _isDecoySession = MutableStateFlow(false)
+    val isDecoySession: StateFlow<Boolean> = _isDecoySession.asStateFlow()
+
+    private val _calculatorDisguiseEnabled = MutableStateFlow(prefs.getBoolean(KEY_CALCULATOR_DISGUISE, false))
+    val calculatorDisguiseEnabled: StateFlow<Boolean> = _calculatorDisguiseEnabled.asStateFlow()
 
     private val _failedAttempts = MutableStateFlow(prefs.getInt(KEY_FAILED_ATTEMPTS, 0))
     val failedAttempts: StateFlow<Int> = _failedAttempts.asStateFlow()
@@ -137,6 +146,17 @@ class SessionSecurityManager(
 
     private var backgroundTimestamp: Long = 0L
     private var lockoutJob: Job? = null
+    private var suppressAutoLock: Boolean = false
+
+    /**
+     * Temporarily suppresses auto-lock (e.g. while a system file picker or system activity is open).
+     */
+    fun setSuppressAutoLock(suppress: Boolean) {
+        suppressAutoLock = suppress
+        if (suppress) {
+            backgroundTimestamp = 0L
+        }
+    }
 
     init {
         checkAndResumeActiveLockout()
@@ -395,13 +415,66 @@ class SessionSecurityManager(
         return Result.success(Unit)
     }
 
+    fun setCalculatorDisguiseEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_CALCULATOR_DISGUISE, enabled).apply()
+        _calculatorDisguiseEnabled.value = enabled
+    }
+
+    fun hasDecoyPin(): Boolean {
+        return prefs.contains(KEY_DECOY_PIN_HASH) && prefs.contains(KEY_DECOY_PIN_SALT)
+    }
+
+    fun setupDecoyPin(pin: String): Boolean {
+        if (pin.length < 4 || pin.length > 8 || !pin.all { it.isDigit() }) return false
+        val salt = secureKeyManager.generateSalt()
+        val hash = secureKeyManager.derivePinHash(pin.toCharArray(), salt)
+        prefs.edit()
+            .putString(KEY_DECOY_PIN_HASH, Base64.encodeToString(hash, Base64.NO_WRAP))
+            .putString(KEY_DECOY_PIN_SALT, Base64.encodeToString(salt, Base64.NO_WRAP))
+            .apply()
+        return true
+    }
+
+    fun removeDecoyPin() {
+        prefs.edit()
+            .remove(KEY_DECOY_PIN_HASH)
+            .remove(KEY_DECOY_PIN_SALT)
+            .apply()
+    }
+
     /**
-     * Authenticates the user with their master PIN.
-     * Enforces rate limiting and exponential backoff lockout.
+     * Authenticates the user with their master PIN or decoy PIN.
+     * Enforces rate limiting, intruder photo capture, and exponential backoff lockout.
      */
     fun authenticatePin(enteredPin: String): Boolean {
         if (_lockState.value is LockState.Lockout) return false
 
+        // 1. Check Decoy PIN first if configured
+        if (hasDecoyPin()) {
+            val decoyHashBase64 = prefs.getString(KEY_DECOY_PIN_HASH, null)
+            val decoySaltBase64 = prefs.getString(KEY_DECOY_PIN_SALT, null)
+            if (decoyHashBase64 != null && decoySaltBase64 != null) {
+                val decoyHash = Base64.decode(decoyHashBase64, Base64.NO_WRAP)
+                val decoySalt = Base64.decode(decoySaltBase64, Base64.NO_WRAP)
+                val computedDecoy = secureKeyManager.derivePinHash(enteredPin.toCharArray(), decoySalt)
+                if (Arrays.equals(decoyHash, computedDecoy)) {
+                    val now = System.currentTimeMillis()
+                    _failedAttempts.value = 0
+                    _lastUnlockTimestamp.value = now
+                    prefs.edit()
+                        .putInt(KEY_FAILED_ATTEMPTS, 0)
+                        .putInt(KEY_LOCKOUT_COUNT, 0)
+                        .putLong(KEY_LOCKOUT_UNTIL_TIMESTAMP, 0L)
+                        .putLong(KEY_LAST_UNLOCK_TIMESTAMP, now)
+                        .apply()
+                    _isDecoySession.value = true
+                    _lockState.value = LockState.Unlocked
+                    return true
+                }
+            }
+        }
+
+        // 2. Check Master PIN
         val storedHashBase64 = prefs.getString(KEY_PIN_HASH, null) ?: return false
         val storedSaltBase64 = prefs.getString(KEY_PIN_SALT, null) ?: return false
 
@@ -421,12 +494,17 @@ class SessionSecurityManager(
                 .putLong(KEY_LOCKOUT_UNTIL_TIMESTAMP, 0L)
                 .putLong(KEY_LAST_UNLOCK_TIMESTAMP, now)
                 .apply()
+            _isDecoySession.value = false
             _lockState.value = LockState.Unlocked
+            DeadManSwitchManager.getInstance(context).recordCheckIn()
             return true
         } else {
             val nextAttempts = _failedAttempts.value + 1
             _failedAttempts.value = nextAttempts
             prefs.edit().putInt(KEY_FAILED_ATTEMPTS, nextAttempts).apply()
+
+            // Trigger Intruder Stealth Snapshot
+            IntruderDetectionManager.getInstance(context).onFailedAttempt(nextAttempts, "PIN_VERIFICATION_FAILURE")
 
             if (nextAttempts >= MAX_FAILED_ATTEMPTS) {
                 triggerProgressiveLockout()
@@ -453,7 +531,9 @@ class SessionSecurityManager(
             .putInt(KEY_FAILED_ATTEMPTS, 0)
             .putLong(KEY_LAST_UNLOCK_TIMESTAMP, now)
             .apply()
+        _isDecoySession.value = false
         _lockState.value = LockState.Unlocked
+        DeadManSwitchManager.getInstance(context).recordCheckIn()
         return true
     }
 
@@ -461,6 +541,7 @@ class SessionSecurityManager(
      * Explicitly locks the vault.
      */
     fun lockVault() {
+        _isDecoySession.value = false
         if (hasMasterPin()) {
             _lockState.value = LockState.Locked
         } else {
@@ -528,10 +609,18 @@ class SessionSecurityManager(
     }
 
     fun onAppBackgrounded() {
-        backgroundTimestamp = System.currentTimeMillis()
+        if (!suppressAutoLock) {
+            backgroundTimestamp = System.currentTimeMillis()
+        }
     }
 
     fun onAppForegrounded() {
+        if (suppressAutoLock) {
+            suppressAutoLock = false
+            backgroundTimestamp = 0L
+            return
+        }
+
         // If in lockout, refresh remaining time
         val lockoutUntil = prefs.getLong(KEY_LOCKOUT_UNTIL_TIMESTAMP, 0L)
         val remainingMs = lockoutUntil - System.currentTimeMillis()
@@ -545,7 +634,9 @@ class SessionSecurityManager(
 
         val timeout = getAutoLockTimeout()
         if (timeout == AutoLockTimeout.IMMEDIATE) {
-            lockVault()
+            if (backgroundTimestamp > 0) {
+                lockVault()
+            }
         } else if (timeout != AutoLockTimeout.NEVER && timeout.millis > 0 && backgroundTimestamp > 0) {
             val elapsed = System.currentTimeMillis() - backgroundTimestamp
             if (elapsed >= timeout.millis) {

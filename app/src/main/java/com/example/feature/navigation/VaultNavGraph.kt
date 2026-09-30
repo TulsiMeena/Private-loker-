@@ -82,6 +82,8 @@ object VaultDestinations {
     const val SMART_ORGANIZATION = "smart_organization"
     const val SECURITY_CENTER = "security_center"
     const val BACKUP_CENTER = "backup_center"
+    const val CALCULATOR_DISGUISE = "calculator_disguise"
+    const val INTRUDER_LOGS = "intruder_logs"
 
     fun categoryDetailRoute(category: VaultCategory) = "category/${category.name}"
     fun fileViewerRoute(itemId: Long) = "file_viewer/$itemId"
@@ -108,6 +110,7 @@ fun VaultNavGraph(
     val context = androidx.compose.ui.platform.LocalContext.current
     val appSettingsManager = remember(context) { com.example.core.settings.AppSettingsManager.getInstance(context) }
     val lockScreenStyle by appSettingsManager.lockScreenStyle.collectAsState()
+    val calculatorDisguiseEnabled by sessionManager.calculatorDisguiseEnabled.collectAsState()
 
     val dataLifecycleManager = remember {
         lifecycleManager ?: run {
@@ -138,6 +141,7 @@ fun VaultNavGraph(
     val biometricStatus = remember { biometricAuthenticator.queryStatus() }
     val isBiometricSupported = biometricStatus != BiometricHardwareStatus.UNSUPPORTED
     val isBiometricEnrolled = biometricStatus == BiometricHardwareStatus.AVAILABLE
+    val isBiometricEnabled by sessionManager.biometricEnabled.collectAsState()
     val biometricDesc = remember { biometricAuthenticator.getStatusDescription() }
 
     val voiceLockManager = remember {
@@ -169,12 +173,17 @@ fun VaultNavGraph(
         )
     }
 
-    // Global session auto-lock observer: immediately pop to HOME (AuthScreen) on lock
-    LaunchedEffect(lockState) {
+    // Global session auto-lock observer: immediately pop to Calculator or Auth on lock
+    LaunchedEffect(lockState, calculatorDisguiseEnabled) {
         if (lockState !is LockState.Unlocked) {
             val currentRoute = navController.currentDestination?.route
-            if (currentRoute != null && currentRoute != VaultDestinations.AUTH && currentRoute != VaultDestinations.LAUNCH && currentRoute != VaultDestinations.HOME) {
-                navController.navigate(VaultDestinations.HOME) {
+            val targetLockDestination = if (calculatorDisguiseEnabled) {
+                VaultDestinations.CALCULATOR_DISGUISE
+            } else {
+                VaultDestinations.HOME
+            }
+            if (currentRoute != null && currentRoute != VaultDestinations.AUTH && currentRoute != VaultDestinations.LAUNCH && currentRoute != targetLockDestination) {
+                navController.navigate(targetLockDestination) {
                     popUpTo(VaultDestinations.HOME) { inclusive = false }
                 }
             }
@@ -194,7 +203,12 @@ fun VaultNavGraph(
         composable(VaultDestinations.LAUNCH) {
             LaunchScreen(
                 onLaunchComplete = {
-                    navController.navigate(VaultDestinations.AUTH) {
+                    val target = if (calculatorDisguiseEnabled) {
+                        VaultDestinations.CALCULATOR_DISGUISE
+                    } else {
+                        VaultDestinations.AUTH
+                    }
+                    navController.navigate(target) {
                         popUpTo(VaultDestinations.LAUNCH) { inclusive = true }
                     }
                 }
@@ -210,6 +224,7 @@ fun VaultNavGraph(
                 failedAttempts = failedAttempts,
                 isBiometricSupported = isBiometricSupported,
                 isBiometricEnrolled = isBiometricEnrolled,
+                isBiometricEnabled = isBiometricEnabled,
                 biometricStatusDesc = biometricDesc,
                 voiceLockManager = voiceLockManager,
                 voicePassphrase = voicePassphrase,
@@ -269,12 +284,14 @@ fun VaultNavGraph(
                     }
                 },
                 onBiometricClick = {
+                    sessionManager.setSuppressAutoLock(true)
                     biometricAuthenticator.authenticate(
                         activity = activity,
                         title = "PrivateVault Biometric Authentication",
                         subtitle = "Verify with Fingerprint or Face Recognition to unlock",
                         listener = object : BiometricAuthListener {
                             override fun onAuthenticationSucceeded() {
+                                sessionManager.setSuppressAutoLock(false)
                                 sessionManager.unlockViaBiometrics()
                                 scope.launch {
                                     vaultRepository.logSecurityEvent(
@@ -289,6 +306,7 @@ fun VaultNavGraph(
                             }
 
                             override fun onAuthenticationFailed() {
+                                sessionManager.setSuppressAutoLock(false)
                                 scope.launch {
                                     vaultRepository.logSecurityEvent(
                                         action = "BIOMETRIC_AUTH_FAILED",
@@ -299,6 +317,7 @@ fun VaultNavGraph(
                             }
 
                             override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                                sessionManager.setSuppressAutoLock(false)
                                 scope.launch {
                                     vaultRepository.logSecurityEvent(
                                         action = "BIOMETRIC_ERROR",
@@ -343,6 +362,7 @@ fun VaultNavGraph(
                     failedAttempts = failedAttempts,
                     isBiometricSupported = isBiometricSupported,
                     isBiometricEnrolled = isBiometricEnrolled,
+                    isBiometricEnabled = isBiometricEnabled,
                     biometricStatusDesc = biometricDesc,
                     voiceLockManager = voiceLockManager,
                     voicePassphrase = voicePassphrase,
@@ -370,12 +390,14 @@ fun VaultNavGraph(
                         }
                     },
                     onBiometricClick = {
+                        sessionManager.setSuppressAutoLock(true)
                         biometricAuthenticator.authenticate(
                             activity = activity,
                             title = "PrivateVault Biometric Authentication",
                             subtitle = "Verify with Fingerprint or Face Recognition to unlock",
                             listener = object : BiometricAuthListener {
                                 override fun onAuthenticationSucceeded() {
+                                    sessionManager.setSuppressAutoLock(false)
                                     sessionManager.unlockViaBiometrics()
                                     scope.launch {
                                         vaultRepository.logSecurityEvent(
@@ -386,6 +408,7 @@ fun VaultNavGraph(
                                     }
                                 }
                                 override fun onAuthenticationFailed() {
+                                    sessionManager.setSuppressAutoLock(false)
                                     scope.launch {
                                         vaultRepository.logSecurityEvent(
                                             action = "BIOMETRIC_AUTH_FAILED",
@@ -395,6 +418,7 @@ fun VaultNavGraph(
                                     }
                                 }
                                 override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                                    sessionManager.setSuppressAutoLock(false)
                                     scope.launch {
                                         vaultRepository.logSecurityEvent(
                                             action = "BIOMETRIC_ERROR",
@@ -420,6 +444,7 @@ fun VaultNavGraph(
             } else {
                 VaultHomeScreen(
                     viewModel = homeViewModel,
+                    sessionManager = sessionManager,
                     onCategoryClick = { category ->
                         if (category == VaultCategory.DOCUMENT) {
                             navController.navigate(VaultDestinations.DOCUMENT_CENTER)
@@ -511,6 +536,7 @@ fun VaultNavGraph(
                 category = category,
                 items = categoryItems,
                 repository = vaultRepository,
+                sessionManager = sessionManager,
                 onBackClick = { navController.popBackStack() },
                 onOpenFile = { itemId ->
                     navController.navigate(VaultDestinations.fileViewerRoute(itemId))
@@ -655,6 +681,9 @@ fun VaultNavGraph(
                 lifecycleManager = lifecycleManager,
                 appSettingsManager = appSettingsManager,
                 voiceLockManager = voiceLockManager,
+                onNavigateToIntruderLogs = {
+                    navController.navigate(VaultDestinations.INTRUDER_LOGS)
+                },
                 onPurgeVault = {
                     scope.launch {
                         vaultRepository.purgeAllVaultData()
@@ -775,6 +804,30 @@ fun VaultNavGraph(
                         popUpTo(VaultDestinations.HOME) { inclusive = false }
                     }
                 }
+            )
+        }
+
+        // 12. Calculator Camouflage Disguise
+        composable(VaultDestinations.CALCULATOR_DISGUISE) {
+            com.example.feature.cloak.CalculatorDisguiseScreen(
+                sessionManager = sessionManager,
+                onUnlocked = {
+                    navController.navigate(VaultDestinations.HOME) {
+                        popUpTo(VaultDestinations.CALCULATOR_DISGUISE) { inclusive = true }
+                    }
+                },
+                onSwitchToPinPad = {
+                    navController.navigate(VaultDestinations.AUTH) {
+                        popUpTo(VaultDestinations.CALCULATOR_DISGUISE) { inclusive = true }
+                    }
+                }
+            )
+        }
+
+        // 13. Intruder Break-in Logs Evidence
+        composable(VaultDestinations.INTRUDER_LOGS) {
+            com.example.feature.security.IntruderLogsScreen(
+                onNavigateBack = { navController.popBackStack() }
             )
         }
     }

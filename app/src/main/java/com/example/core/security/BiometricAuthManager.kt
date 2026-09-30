@@ -109,7 +109,10 @@ class DeviceBiometricManager(
         }
 
         if (activity == null) {
-            listener.onAuthenticationSucceeded()
+            listener.onAuthenticationError(
+                BiometricPrompt.ERROR_UNABLE_TO_PROCESS,
+                "Authentication activity context unavailable"
+            )
             return
         }
 
@@ -142,6 +145,7 @@ class DeviceBiometricManager(
             val promptInfo = BiometricPrompt.PromptInfo.Builder()
                 .setTitle(title)
                 .setSubtitle(subtitle)
+                .setDescription("Place your fingerprint on the sensor or face the camera to unlock")
                 .setNegativeButtonText("Use Master Passcode")
                 .setAllowedAuthenticators(authenticators)
                 .setConfirmationRequired(false)

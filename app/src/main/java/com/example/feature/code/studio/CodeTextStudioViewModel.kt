@@ -57,7 +57,7 @@ private data class FilterCriteria(
 
 class CodeTextStudioViewModel(
     private val repository: VaultRepository,
-    private val sessionManager: SessionSecurityManager
+    val sessionManager: SessionSecurityManager
 ) : ViewModel() {
 
     private val _currentSection = MutableStateFlow(StudioSection.ALL_FILES)

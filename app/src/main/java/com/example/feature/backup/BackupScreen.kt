@@ -108,6 +108,7 @@ fun BackupScreen(
     val createDocLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/octet-stream")
     ) { uri: Uri? ->
+        viewModel.backupManager.sessionManager.setSuppressAutoLock(false)
         if (uri != null && pendingProtectionType != null && pendingSecretChars != null) {
             val fileName = uri.lastPathSegment ?: "PrivateVault_Backup"
             viewModel.executeBackupCreation(
@@ -125,6 +126,7 @@ fun BackupScreen(
     val restorePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
+        viewModel.backupManager.sessionManager.setSuppressAutoLock(false)
         if (uri != null) {
             viewModel.onRestoreFileSelected(uri)
         }
@@ -134,6 +136,7 @@ fun BackupScreen(
     val verifyPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
+        viewModel.backupManager.sessionManager.setSuppressAutoLock(false)
         if (uri != null) {
             viewModel.onVerifyFileSelected(uri)
         }
@@ -248,6 +251,7 @@ fun BackupScreen(
                     buttonLabel = "Select Backup File",
                     testTag = "btn_restore_vault_action",
                     onClick = {
+                        viewModel.backupManager.sessionManager.setSuppressAutoLock(true)
                         restorePickerLauncher.launch(arrayOf("application/octet-stream", "*/*"))
                     }
                 )
@@ -262,6 +266,7 @@ fun BackupScreen(
                     buttonLabel = "Verify Integrity",
                     testTag = "btn_verify_backup_action",
                     onClick = {
+                        viewModel.backupManager.sessionManager.setSuppressAutoLock(true)
                         verifyPickerLauncher.launch(arrayOf("application/octet-stream", "*/*"))
                     }
                 )
@@ -418,6 +423,7 @@ fun BackupScreen(
                 val sdf = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault())
                 val timestampStr = sdf.format(Date())
                 val defaultName = "${BackupConstants.DEFAULT_BACKUP_FILENAME_PREFIX}$timestampStr${BackupConstants.BACKUP_FILE_EXTENSION}"
+                viewModel.backupManager.sessionManager.setSuppressAutoLock(true)
                 createDocLauncher.launch(defaultName)
             },
             onGenerateRecoveryKey = { viewModel.generateNewRecoveryKey() }

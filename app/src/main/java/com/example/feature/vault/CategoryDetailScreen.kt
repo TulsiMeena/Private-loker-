@@ -4,6 +4,7 @@ import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import com.example.core.security.SessionSecurityManager
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -79,6 +80,7 @@ fun CategoryDetailScreen(
     category: VaultCategory,
     items: List<VaultItemEntity>,
     repository: VaultRepository,
+    sessionManager: SessionSecurityManager? = null,
     onBackClick: () -> Unit,
     onOpenFile: (itemId: Long) -> Unit = {},
     modifier: Modifier = Modifier
@@ -109,6 +111,7 @@ fun CategoryDetailScreen(
     val safPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenMultipleDocuments()
     ) { uris: List<Uri> ->
+        sessionManager?.setSuppressAutoLock(false)
         if (uris.isNotEmpty()) {
             importController.startImport(uris, targetCategory = category)
         }
@@ -118,6 +121,7 @@ fun CategoryDetailScreen(
     val safExportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("*/*")
     ) { destUri: Uri? ->
+        sessionManager?.setSuppressAutoLock(false)
         val targetItem = itemToExport
         if (destUri != null && targetItem != null) {
             scope.launch {
@@ -202,7 +206,10 @@ fun CategoryDetailScreen(
         },
         floatingActionButton = {
             FloatingActionButton(
-                onClick = { safPickerLauncher.launch(arrayOf("*/*")) },
+                onClick = {
+                    sessionManager?.setSuppressAutoLock(true)
+                    safPickerLauncher.launch(arrayOf("*/*"))
+                },
                 containerColor = VaultColors.AccentEmerald,
                 contentColor = VaultColors.Canvas,
                 modifier = Modifier.testTag("category_fab_import")
@@ -317,7 +324,10 @@ fun CategoryDetailScreen(
                             if (searchQuery.isEmpty()) {
                                 Spacer(modifier = Modifier.height(spacing.l))
                                 Button(
-                                    onClick = { safPickerLauncher.launch(arrayOf("*/*")) },
+                                    onClick = {
+                                        sessionManager?.setSuppressAutoLock(true)
+                                        safPickerLauncher.launch(arrayOf("*/*"))
+                                    },
                                     colors = ButtonDefaults.buttonColors(containerColor = VaultColors.AccentEmerald),
                                     modifier = Modifier.testTag("category_empty_import_button")
                                 ) {
@@ -447,6 +457,7 @@ fun CategoryDetailScreen(
         SecureExportDialog(
             item = exportItem,
             onConfirmExport = {
+                sessionManager?.setSuppressAutoLock(true)
                 safExportLauncher.launch(exportItem.title)
             },
             onDismiss = { itemToExport = null }

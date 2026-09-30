@@ -159,6 +159,7 @@ fun VaultFileBrowserScreen(
     val exportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument(itemForExport?.mimeType ?: "*/*")
     ) { uri: Uri? ->
+        viewModel.sessionManager.setSuppressAutoLock(false)
         if (uri != null && itemForExport != null) {
             val target = itemForExport!!
             scope.launch {
@@ -391,6 +392,7 @@ fun VaultFileBrowserScreen(
             fileName = itm.title,
             onDismiss = { itemForExport = null },
             onConfirm = {
+                viewModel.sessionManager.setSuppressAutoLock(true)
                 exportLauncher.launch(itm.title)
             }
         )

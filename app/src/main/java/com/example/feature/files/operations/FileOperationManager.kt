@@ -197,4 +197,86 @@ class FileOperationManager(
             it.status == FileOperationStatus.RUNNING || it.status == FileOperationStatus.QUEUED
         }
     }
+
+    /**
+     * Executes DoD 5220.22-M (3-pass) military-grade file shredding:
+     * - Pass 1: Cryptographic pseudo-random byte patterns
+     * - Pass 2: Hex 0xFF (complementary binary ones)
+     * - Pass 3: Hex 0x00 (binary zeroes)
+     * - Hardware descriptor synchronization (fsync)
+     * - Truncation and zero-trace file unlinking
+     */
+    fun militaryShred(
+        file: java.io.File,
+        onProgress: (progress: Float, step: String) -> Unit = { _, _ -> }
+    ): Boolean {
+        if (!file.exists() || !file.isFile) return false
+        val length = file.length()
+        if (length == 0L) return file.delete()
+
+        val opId = enqueueOperation(
+            type = FileOperationType.DELETE,
+            title = "DoD 5220.22-M Shredding: ${file.name}",
+            totalItems = 3
+        )
+
+        return try {
+            val random = java.security.SecureRandom()
+            val buffer = ByteArray(8192)
+
+            java.io.RandomAccessFile(file, "rws").use { raf ->
+                // Pass 1: Random overwrite
+                updateProgress(opId, 0.33f, "Pass 1/3: Cryptographic Random Overwrite", 1)
+                onProgress(0.33f, "Pass 1/3: Overwriting with random noise")
+                raf.seek(0)
+                var written: Long = 0
+                while (written < length) {
+                    random.nextBytes(buffer)
+                    val toWrite = minOf(buffer.size.toLong(), length - written).toInt()
+                    raf.write(buffer, 0, toWrite)
+                    written += toWrite
+                }
+                raf.fd.sync()
+
+                // Pass 2: Complementary 0xFF overwrite
+                updateProgress(opId, 0.66f, "Pass 2/3: Inverted Binary (0xFF) Overwrite", 2)
+                onProgress(0.66f, "Pass 2/3: Overwriting with 0xFF")
+                raf.seek(0)
+                buffer.fill(0xFF.toByte())
+                written = 0
+                while (written < length) {
+                    val toWrite = minOf(buffer.size.toLong(), length - written).toInt()
+                    raf.write(buffer, 0, toWrite)
+                    written += toWrite
+                }
+                raf.fd.sync()
+
+                // Pass 3: Zero 0x00 overwrite
+                updateProgress(opId, 0.95f, "Pass 3/3: Zero (0x00) Neutralization", 3)
+                onProgress(0.95f, "Pass 3/3: Zeroing byte blocks")
+                raf.seek(0)
+                buffer.fill(0x00.toByte())
+                written = 0
+                while (written < length) {
+                    val toWrite = minOf(buffer.size.toLong(), length - written).toInt()
+                    raf.write(buffer, 0, toWrite)
+                    written += toWrite
+                }
+                raf.fd.sync()
+
+                // Truncate to zero bytes
+                raf.setLength(0)
+                raf.fd.sync()
+            }
+
+            // Zero-trace delete from filesystem
+            val deleted = file.delete()
+            completeOperation(opId)
+            onProgress(1.0f, "Shredding Complete")
+            deleted
+        } catch (e: Exception) {
+            failOperation(opId, e.message ?: "Shredding failed")
+            false
+        }
+    }
 }

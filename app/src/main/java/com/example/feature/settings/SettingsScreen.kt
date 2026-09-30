@@ -30,6 +30,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AccessibilityNew
 import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Calculate
+import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.CleaningServices
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.DeleteForever
@@ -37,6 +39,7 @@ import androidx.compose.material.icons.filled.Face
 import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.LockReset
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Palette
@@ -44,9 +47,12 @@ import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.RestartAlt
+import androidx.compose.material.icons.filled.ScreenRotation
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material.icons.filled.Vibration
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
@@ -145,6 +151,7 @@ fun SettingsScreen(
     lifecycleManager: DataLifecycleManager? = null,
     appSettingsManager: AppSettingsManager? = null,
     voiceLockManager: VoiceLockSecurityManager? = null,
+    onNavigateToIntruderLogs: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -374,6 +381,7 @@ fun SettingsScreen(
                                     onNavigateToSecurityCenter = onNavigateToSecurityCenter,
                                     onNavigateToBackupCenter = onNavigateToBackupCenter,
                                     onNavigateToTrash = onNavigateToTrash,
+                                    onNavigateToIntruderLogs = onNavigateToIntruderLogs,
                                     onRunIntegrityCheck = {
                                         scope.launch {
                                             isCheckingIntegrity = true
@@ -491,6 +499,7 @@ fun SettingsScreen(
                                             onNavigateToSecurityCenter = onNavigateToSecurityCenter,
                                             onNavigateToBackupCenter = onNavigateToBackupCenter,
                                             onNavigateToTrash = onNavigateToTrash,
+                                            onNavigateToIntruderLogs = onNavigateToIntruderLogs,
                                             onRunIntegrityCheck = {
                                                 scope.launch {
                                                     isCheckingIntegrity = true
@@ -757,6 +766,7 @@ private fun SettingsSectionContent(
     onNavigateToSecurityCenter: () -> Unit,
     onNavigateToBackupCenter: () -> Unit,
     onNavigateToTrash: () -> Unit,
+    onNavigateToIntruderLogs: () -> Unit = {},
     onRunIntegrityCheck: () -> Unit,
     onOpenPurgeVault: () -> Unit
 ) {
@@ -765,6 +775,7 @@ private fun SettingsSectionContent(
             sessionManager = sessionManager,
             voiceLockManager = voiceLockManager,
             onNavigateToSecurityCenter = onNavigateToSecurityCenter,
+            onNavigateToIntruderLogs = onNavigateToIntruderLogs,
             onOpenPurgeVault = onOpenPurgeVault
         )
         SettingsSection.APPEARANCE -> AppearanceSettingsSection(settingsManager = settingsManager)
@@ -792,6 +803,7 @@ private fun SecuritySettingsSection(
     sessionManager: SessionSecurityManager,
     voiceLockManager: VoiceLockSecurityManager? = null,
     onNavigateToSecurityCenter: () -> Unit,
+    onNavigateToIntruderLogs: () -> Unit = {},
     onOpenPurgeVault: () -> Unit
 ) {
     val context = LocalContext.current
@@ -810,6 +822,27 @@ private fun SecuritySettingsSection(
     val clipboardProtection by sessionManager.clipboardProtectionEnabled.collectAsState()
     val clipboardTimeout by sessionManager.clipboardTimeoutSeconds.collectAsState()
     val autoLockTimeout by sessionManager.autoLockTimeout.collectAsState()
+
+    val intruderManager = remember(context) { com.example.core.security.IntruderDetectionManager.getInstance(context) }
+    val intruderCaptureEnabled by intruderManager.captureEnabled.collectAsState()
+    val intruderLogs by intruderManager.intruderLogs.collectAsState()
+    val calculatorDisguise by sessionManager.calculatorDisguiseEnabled.collectAsState()
+    val hasDecoyPin = sessionManager.hasDecoyPin()
+
+    var showDecoyPinDialog by remember { mutableStateOf(false) }
+    var decoyPinInput by remember { mutableStateOf("") }
+
+    val panicSensorManager = remember(context) {
+        com.example.core.security.PanicSensorManager(context) {}
+    }
+    val flipToLock by panicSensorManager.flipToLockEnabled.collectAsState()
+    val shakeToLock by panicSensorManager.shakeToLockEnabled.collectAsState()
+
+    val deadManSwitch = remember(context) { com.example.core.security.DeadManSwitchManager.getInstance(context) }
+    val dmsEnabled by deadManSwitch.enabled.collectAsState()
+    val dmsDays by deadManSwitch.inactivityDays.collectAsState()
+    val dmsDaysRemaining by deadManSwitch.daysRemaining.collectAsState()
+    var showDmsConfirmDialog by remember { mutableStateOf(false) }
 
     var autoLockDropdownExpanded by remember { mutableStateOf(false) }
     var passphraseInput by remember(voicePassphrase) { mutableStateOf(voicePassphrase) }
@@ -1144,6 +1177,347 @@ private fun SecuritySettingsSection(
                     }
                 }
             }
+        }
+
+        Spacer(modifier = Modifier.height(spacing.s))
+
+        // ADVANCED DEFENSE SUITE
+        Text(
+            text = "ADVANCED HARDWARE DEFENSE & CAMOUFLAGE",
+            style = vaultTypography.caption,
+            color = VaultColors.AccentCyan,
+            fontWeight = FontWeight.Bold
+        )
+
+        // 1. Stealth Intruder Selfie
+        SettingToggleRow(
+            title = "Stealth Intruder Selfie Capture",
+            subtitle = "Secretly captures front-camera photo of anyone trying to break in with wrong PIN",
+            checked = intruderCaptureEnabled,
+            icon = Icons.Default.CameraAlt,
+            onCheckedChange = { intruderManager.setCaptureEnabled(it) }
+        )
+        if (intruderCaptureEnabled) {
+            OutlinedButton(
+                onClick = onNavigateToIntruderLogs,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(44.dp),
+                shape = RoundedCornerShape(8.dp),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = VaultColors.AccentCrimson)
+            ) {
+                Icon(Icons.Default.Warning, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(spacing.xs))
+                Text("View Intruder Break-in Evidence (${intruderLogs.size})", fontWeight = FontWeight.SemiBold)
+            }
+        }
+
+        // 2. Calculator Camouflage Disguise
+        SettingToggleRow(
+            title = "Calculator Camouflage Disguise",
+            subtitle = "App appears as a working standard calculator. Type secret PIN + '=' to unlock",
+            checked = calculatorDisguise,
+            icon = Icons.Default.Calculate,
+            onCheckedChange = { sessionManager.setCalculatorDisguiseEnabled(it) }
+        )
+
+        // 3. Decoy Vault / Duress Mode
+        SettingToggleRow(
+            title = "Decoy Vault (Duress Dual-PIN)",
+            subtitle = if (hasDecoyPin) "Decoy PIN active. Entering decoy PIN opens safe decoy vault" else "Configure secondary decoy PIN to show dummy files under coercion",
+            checked = hasDecoyPin,
+            icon = Icons.Default.LockReset,
+            onCheckedChange = { checked ->
+                if (checked) {
+                    showDecoyPinDialog = true
+                } else {
+                    sessionManager.removeDecoyPin()
+                    Toast.makeText(context, "Decoy PIN removed", Toast.LENGTH_SHORT).show()
+                }
+            }
+        )
+
+        // 4. Panic Sensors: Flip & Shake
+        SettingToggleRow(
+            title = "Flip-to-Lock Panic Switch",
+            subtitle = "Instantly locks vault when device is placed screen-down on a desk",
+            checked = flipToLock,
+            icon = Icons.Default.ScreenRotation,
+            onCheckedChange = { panicSensorManager.setFlipToLockEnabled(it) }
+        )
+
+        SettingToggleRow(
+            title = "Shake-to-Lock Emergency Lockdown",
+            subtitle = "Instantly locks vault and wipes memory session when phone is shaken vigorously",
+            checked = shakeToLock,
+            icon = Icons.Default.Vibration,
+            onCheckedChange = { panicSensorManager.setShakeToLockEnabled(it) }
+        )
+
+        // 5. Dead-Man's Switch (Inactivity Self-Destruct)
+        VaultGlassCard(
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(spacing.m),
+                verticalArrangement = Arrangement.spacedBy(spacing.m)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(spacing.s),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .background(
+                                    if (dmsEnabled) VaultColors.AccentCrimson.copy(alpha = 0.2f)
+                                    else VaultColors.SurfaceElevated,
+                                    CircleShape
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Timer,
+                                contentDescription = null,
+                                tint = if (dmsEnabled) VaultColors.AccentCrimson else VaultColors.TextSecondary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        Column {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = "Dead-Man's Switch",
+                                    style = vaultTypography.title,
+                                    color = VaultColors.TextPrimary,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                if (dmsEnabled) {
+                                    Text(
+                                        text = "ARMED",
+                                        color = VaultColors.AccentCrimson,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Black,
+                                        modifier = Modifier
+                                            .background(VaultColors.AccentCrimson.copy(alpha = 0.15f), RoundedCornerShape(4.dp))
+                                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+                            Text(
+                                text = "Auto self-destruct if inactive for $dmsDays days",
+                                style = vaultTypography.bodySmall,
+                                color = VaultColors.TextTertiary
+                            )
+                        }
+                    }
+
+                    Switch(
+                        checked = dmsEnabled,
+                        onCheckedChange = { checked ->
+                            if (checked) {
+                                showDmsConfirmDialog = true
+                            } else {
+                                deadManSwitch.setEnabled(false)
+                                Toast.makeText(context, "Dead-Man's Switch disarmed", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Color.White,
+                            checkedTrackColor = VaultColors.AccentCrimson
+                        )
+                    )
+                }
+
+                if (dmsEnabled) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color(0xFF1E1417), RoundedCornerShape(8.dp))
+                            .border(1.dp, VaultColors.AccentCrimson.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
+                            .padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "⏳ Days Remaining:",
+                                color = Color.White.copy(alpha = 0.8f),
+                                fontSize = 13.sp
+                            )
+                            Text(
+                                text = "$dmsDaysRemaining days left",
+                                color = if (dmsDaysRemaining <= 3) VaultColors.AccentCrimson else VaultColors.AccentAmber,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "📅 Target Expiry:",
+                                color = Color.White.copy(alpha = 0.6f),
+                                fontSize = 12.sp
+                            )
+                            Text(
+                                text = deadManSwitch.getFormattedExpiryDate(),
+                                color = Color.White.copy(alpha = 0.9f),
+                                fontSize = 12.sp,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Inactivity Duration:",
+                                color = Color.White.copy(alpha = 0.7f),
+                                fontSize = 12.sp
+                            )
+                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                com.example.core.security.DeadManSwitchManager.SUPPORTED_DAYS.forEach { days ->
+                                    val isSelected = days == dmsDays
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(
+                                                if (isSelected) VaultColors.AccentCrimson
+                                                else Color(0xFF2C1E23)
+                                            )
+                                            .clickable { deadManSwitch.setInactivityDays(days) }
+                                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                                    ) {
+                                        Text(
+                                            text = "${days}d",
+                                            color = Color.White,
+                                            fontSize = 11.sp,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(2.dp))
+
+                        Button(
+                            onClick = {
+                                deadManSwitch.recordCheckIn()
+                                Toast.makeText(context, "Checked in! Timer reset to $dmsDays days.", Toast.LENGTH_SHORT).show()
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(8.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = VaultColors.AccentCrimson)
+                        ) {
+                            Icon(Icons.Default.RestartAlt, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Check-In Now (Reset Timer)", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
+
+        if (showDmsConfirmDialog) {
+            AlertDialog(
+                onDismissRequest = { showDmsConfirmDialog = false },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Warning, contentDescription = null, tint = VaultColors.AccentCrimson)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Arm Dead-Man's Switch?", color = VaultColors.TextPrimary)
+                    }
+                },
+                text = {
+                    Text(
+                        "If you do not open or unlock PrivateVault for $dmsDays days, the app will assume you have lost access and will permanently and irreversibly destroy all encrypted files and wipe cryptographic keys.\n\nAre you sure you want to arm this failsafe?",
+                        color = VaultColors.TextSecondary,
+                        fontSize = 13.sp
+                    )
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            deadManSwitch.setEnabled(true)
+                            showDmsConfirmDialog = false
+                            Toast.makeText(context, "Dead-Man's Switch Armed: $dmsDays days countdown active", Toast.LENGTH_LONG).show()
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = VaultColors.AccentCrimson)
+                    ) {
+                        Text("Arm Self-Destruct", fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showDmsConfirmDialog = false }) {
+                        Text("Cancel", color = VaultColors.TextSecondary)
+                    }
+                },
+                containerColor = VaultColors.SurfaceElevated
+            )
+        }
+
+        if (showDecoyPinDialog) {
+            AlertDialog(
+                onDismissRequest = { showDecoyPinDialog = false; decoyPinInput = "" },
+                title = { Text("Configure Decoy Duress PIN", color = VaultColors.TextPrimary) },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            "Enter a 4-8 digit Decoy PIN. If entered at login, the app opens a fake vault with harmless dummy files, hiding your real data.",
+                            color = VaultColors.TextSecondary,
+                            fontSize = 13.sp
+                        )
+                        OutlinedTextField(
+                            value = decoyPinInput,
+                            onValueChange = { if (it.length <= 8 && it.all { c -> c.isDigit() }) decoyPinInput = it },
+                            label = { Text("Decoy PIN (4-8 digits)") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            if (decoyPinInput.length in 4..8) {
+                                sessionManager.setupDecoyPin(decoyPinInput)
+                                showDecoyPinDialog = false
+                                decoyPinInput = ""
+                                Toast.makeText(context, "Decoy PIN configured successfully", Toast.LENGTH_SHORT).show()
+                            } else {
+                                Toast.makeText(context, "Decoy PIN must be 4 to 8 digits", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = VaultColors.AccentAmber)
+                    ) {
+                        Text("Save Decoy PIN", color = Color(0xFF0F172A), fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showDecoyPinDialog = false; decoyPinInput = "" }) {
+                        Text("Cancel", color = VaultColors.TextSecondary)
+                    }
+                },
+                containerColor = VaultColors.SurfaceElevated
+            )
         }
 
         Spacer(modifier = Modifier.height(spacing.s))

@@ -131,6 +131,7 @@ fun DocumentCenterScreen(
     val documentPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenMultipleDocuments()
     ) { uris: List<Uri> ->
+        sessionManager.setSuppressAutoLock(false)
         if (uris.isNotEmpty()) {
             importController.startImport(
                 uris = uris,
@@ -145,6 +146,7 @@ fun DocumentCenterScreen(
     val exportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument(itemToExport?.mimeType ?: "*/*")
     ) { uri: Uri? ->
+        sessionManager.setSuppressAutoLock(false)
         if (uri != null && itemToExport != null) {
             val exportTarget = itemToExport!!
             scope.launch {
@@ -329,7 +331,10 @@ fun DocumentCenterScreen(
 
                     // Import document or file button
                     IconButton(
-                        onClick = { documentPickerLauncher.launch(arrayOf("*/*")) },
+                        onClick = {
+                            sessionManager.setSuppressAutoLock(true)
+                            documentPickerLauncher.launch(arrayOf("*/*"))
+                        },
                         modifier = Modifier.testTag("doc_top_import_button")
                     ) {
                         Icon(
@@ -652,7 +657,10 @@ fun DocumentCenterScreen(
                                 }
                             } else {
                                 Button(
-                                    onClick = { documentPickerLauncher.launch(arrayOf("*/*")) },
+                                    onClick = {
+                                        sessionManager.setSuppressAutoLock(true)
+                                        documentPickerLauncher.launch(arrayOf("*/*"))
+                                    },
                                     colors = ButtonDefaults.buttonColors(containerColor = VaultColors.AccentCyan),
                                     modifier = Modifier.testTag("doc_center_empty_import_button")
                                 ) {
@@ -916,6 +924,7 @@ fun DocumentCenterScreen(
                 val target = selectedItemForAction
                 showExportWarningDialog = false
                 itemToExport = target
+                sessionManager.setSuppressAutoLock(true)
                 exportLauncher.launch(target?.title ?: "document")
             }
         )

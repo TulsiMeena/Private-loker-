@@ -129,6 +129,7 @@ fun SecureFileViewerScreen(
     val exportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument(item?.mimeType ?: "*/*")
     ) { uri: Uri? ->
+        sessionManager.setSuppressAutoLock(false)
         if (uri != null && item != null) {
             scope.launch {
                 try {
@@ -670,6 +671,7 @@ fun SecureFileViewerScreen(
                 onDismiss = { showExportConfirmDialog = false },
                 onConfirm = {
                     showExportConfirmDialog = false
+                    sessionManager.setSuppressAutoLock(true)
                     exportLauncher.launch(currentItem.title)
                 }
             )
