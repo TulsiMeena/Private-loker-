@@ -196,6 +196,7 @@ class MainActivity : FragmentActivity() {
             activity = this,
             enabled = sessionSecurityManager.isScreenProtectionEnabled()
         )
+        com.example.core.security.UninstallProtectionManager.getInstance(this).notifyStateChanged()
         if (::panicSensorManager.isInitialized) {
             panicSensorManager.startListening()
         }

@@ -1,6 +1,8 @@
 package com.example.feature.settings
 
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -844,6 +846,18 @@ private fun SecuritySettingsSection(
     val dmsDaysRemaining by deadManSwitch.daysRemaining.collectAsState()
     var showDmsConfirmDialog by remember { mutableStateOf(false) }
 
+    val uninstallManager = remember(context) { com.example.core.security.UninstallProtectionManager.getInstance(context) }
+    val isUninstallProtected by uninstallManager.isProtected.collectAsState()
+    var showDeactivateAdminDialog by remember { mutableStateOf(false) }
+    var deactivateAdminPinInput by remember { mutableStateOf("") }
+    var deactivateAdminError by remember { mutableStateOf<String?>(null) }
+
+    val deviceAdminLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) {
+        uninstallManager.notifyStateChanged()
+    }
+
     var autoLockDropdownExpanded by remember { mutableStateOf(false) }
     var passphraseInput by remember(voicePassphrase) { mutableStateOf(voicePassphrase) }
     var isCalibratingVoice by remember { mutableStateOf(false) }
@@ -1254,7 +1268,184 @@ private fun SecuritySettingsSection(
             onCheckedChange = { panicSensorManager.setShakeToLockEnabled(it) }
         )
 
-        // 5. Dead-Man's Switch (Inactivity Self-Destruct)
+        // 5. Anti-Tamper & Anti-Uninstall Protection
+        VaultGlassCard(
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(spacing.m),
+                verticalArrangement = Arrangement.spacedBy(spacing.m)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(spacing.s),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .background(
+                                    if (isUninstallProtected) VaultColors.AccentEmerald.copy(alpha = 0.2f)
+                                    else VaultColors.SurfaceElevated,
+                                    CircleShape
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Shield,
+                                contentDescription = null,
+                                tint = if (isUninstallProtected) VaultColors.AccentEmerald else VaultColors.TextSecondary,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                        Column {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = "Anti-Uninstall Protection",
+                                    style = vaultTypography.title,
+                                    color = VaultColors.TextPrimary,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = if (isUninstallProtected) "ACTIVE" else "INACTIVE",
+                                    color = if (isUninstallProtected) VaultColors.AccentEmerald else VaultColors.AccentAmber,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Black,
+                                    modifier = Modifier
+                                        .background(
+                                            (if (isUninstallProtected) VaultColors.AccentEmerald else VaultColors.AccentAmber).copy(alpha = 0.15f),
+                                            RoundedCornerShape(4.dp)
+                                        )
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                            Text(
+                                text = if (isUninstallProtected)
+                                    "Android Device Administrator is active. Unauthorized app removal is blocked."
+                                else
+                                    "Prevents intruders from deleting Private Vault to bypass PIN or destroy files",
+                                style = vaultTypography.bodySmall,
+                                color = VaultColors.TextTertiary
+                            )
+                        }
+                    }
+
+                    Switch(
+                        checked = isUninstallProtected,
+                        onCheckedChange = { enable ->
+                            if (enable) {
+                                deviceAdminLauncher.launch(uninstallManager.getActivationIntent())
+                            } else {
+                                deactivateAdminPinInput = ""
+                                deactivateAdminError = null
+                                showDeactivateAdminDialog = true
+                            }
+                        },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = VaultColors.AccentEmerald,
+                            checkedTrackColor = VaultColors.AccentEmerald.copy(alpha = 0.4f),
+                            uncheckedThumbColor = VaultColors.TextTertiary,
+                            uncheckedTrackColor = VaultColors.SurfaceGraphite
+                        )
+                    )
+                }
+
+                if (!isUninstallProtected) {
+                    Button(
+                        onClick = {
+                            deviceAdminLauncher.launch(uninstallManager.getActivationIntent())
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = VaultColors.AccentEmerald)
+                    ) {
+                        Icon(Icons.Default.Security, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.Black)
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Activate Device Admin Protection", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.Black)
+                    }
+                }
+            }
+        }
+
+        if (showDeactivateAdminDialog) {
+            AlertDialog(
+                onDismissRequest = {
+                    showDeactivateAdminDialog = false
+                    deactivateAdminPinInput = ""
+                    deactivateAdminError = null
+                },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.LockReset, contentDescription = null, tint = VaultColors.AccentCrimson)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Verify Master PIN", color = VaultColors.TextPrimary)
+                    }
+                },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            "To disable Uninstall Protection and allow the app to be deleted, please enter your Master PIN:",
+                            color = VaultColors.TextSecondary,
+                            fontSize = 13.sp
+                        )
+                        OutlinedTextField(
+                            value = deactivateAdminPinInput,
+                            onValueChange = {
+                                if (it.length <= 8 && it.all { c -> c.isDigit() }) {
+                                    deactivateAdminPinInput = it
+                                    deactivateAdminError = null
+                                }
+                            },
+                            singleLine = true,
+                            visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                                keyboardType = androidx.compose.ui.text.input.KeyboardType.NumberPassword
+                            ),
+                            isError = deactivateAdminError != null,
+                            placeholder = { Text("Enter PIN", color = VaultColors.TextTertiary) },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        if (deactivateAdminError != null) {
+                            Text(deactivateAdminError!!, color = VaultColors.AccentCrimson, fontSize = 12.sp)
+                        }
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            if (sessionManager.authenticatePin(deactivateAdminPinInput)) {
+                                val ok = uninstallManager.deactivateProtection()
+                                showDeactivateAdminDialog = false
+                                if (ok) {
+                                    Toast.makeText(context, "Uninstall Protection disabled", Toast.LENGTH_SHORT).show()
+                                }
+                            } else {
+                                deactivateAdminError = "Incorrect Master PIN"
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = VaultColors.AccentCrimson)
+                    ) {
+                        Text("Verify & Deactivate", fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showDeactivateAdminDialog = false }) {
+                        Text("Cancel", color = VaultColors.TextSecondary)
+                    }
+                },
+                containerColor = VaultColors.SurfaceElevated
+            )
+        }
+
+        // 6. Dead-Man's Switch (Inactivity Self-Destruct)
         VaultGlassCard(
             modifier = Modifier.fillMaxWidth()
         ) {

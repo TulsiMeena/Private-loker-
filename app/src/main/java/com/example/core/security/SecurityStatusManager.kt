@@ -479,6 +479,30 @@ class SecurityStatusManager(
             )
         )
 
+        // 8. Anti-Uninstall Protection (Anti-Tamper Device Admin)
+        val uninstallManager = UninstallProtectionManager.getInstance(context)
+        if (uninstallManager.isDeviceAdminActive()) {
+            items.add(
+                SecurityCheckupItem(
+                    id = "uninstall_protection_active",
+                    title = "Anti-Uninstall Protection",
+                    description = "Device Administrator active. Android OS blocks unauthorized removal of Private Vault.",
+                    severity = SecuritySeverity.PASSED
+                )
+            )
+        } else {
+            items.add(
+                SecurityCheckupItem(
+                    id = "uninstall_protection_inactive",
+                    title = "Anti-Uninstall Protection",
+                    description = "Device Administrator inactive. Intruders could uninstall the app to bypass security.",
+                    severity = SecuritySeverity.RECOMMENDED,
+                    recommendation = "Activate Uninstall Protection in settings to block unauthorized app removal.",
+                    actionType = "ACTIVATE_UNINSTALL_PROTECTION"
+                )
+            )
+        }
+
         val attentionCount = items.count { it.severity == SecuritySeverity.ATTENTION_REQUIRED }
         val passedCount = items.count { it.severity == SecuritySeverity.PASSED }
         val overallStatus = if (attentionCount == 0) "Recommended" else "Attention Required"

@@ -36,6 +36,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.AudioFile
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.Delete
@@ -785,11 +786,97 @@ private fun WorkspaceDashboardContent(
     onNavigateToSearch: () -> Unit = {},
     onNavigateToOrganize: () -> Unit = {}
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val uninstallManager = remember(context) { com.example.core.security.UninstallProtectionManager.getInstance(context) }
+    val isProtected by uninstallManager.isProtected.collectAsState()
+    val hasDismissedBanner by uninstallManager.hasDismissedBanner.collectAsState()
+
+    val deviceAdminLauncher = rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
+    ) {
+        uninstallManager.notifyStateChanged()
+    }
+
     LazyColumn(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
         modifier = Modifier.fillMaxSize()
     ) {
+        // Anti-Tamper & Uninstall Protection Alert Banner
+        if (!isProtected && !hasDismissedBanner) {
+            item {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF261A13)),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, VaultColors.AccentAmber.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                ) {
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.Shield,
+                                    contentDescription = null,
+                                    tint = VaultColors.AccentAmber,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Anti-Uninstall Protection Inactive",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp,
+                                    color = VaultColors.TextPrimary
+                                )
+                            }
+                            IconButton(
+                                onClick = { uninstallManager.dismissBanner() },
+                                modifier = Modifier.size(24.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Dismiss",
+                                    tint = VaultColors.TextTertiary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Anyone can delete this app and lose your encrypted files. Enable Android Device Admin to lock down uninstallation.",
+                            fontSize = 12.sp,
+                            color = VaultColors.TextSecondary
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Row(
+                            horizontalArrangement = Arrangement.End,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Button(
+                                onClick = {
+                                    deviceAdminLauncher.launch(uninstallManager.getActivationIntent())
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = VaultColors.AccentAmber),
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
+                            ) {
+                                Text(
+                                    text = "Turn On Protection",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp,
+                                    color = Color.Black
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // 0. Universal Quick Search Entry Card
         item {
             Card(

@@ -98,7 +98,8 @@ import kotlin.math.roundToInt
 private enum class SetupStep {
     ENTER_PIN,
     CONFIRM_PIN,
-    BIOMETRIC_CONFIG
+    BIOMETRIC_CONFIG,
+    UNINSTALL_PROTECTION
 }
 
 enum class BiometricAuthMode {
@@ -174,6 +175,18 @@ fun AuthScreen(
         if (isGranted) {
             voiceLockManager?.startListening()
         }
+    }
+
+    val uninstallManager = remember(context) {
+        com.example.core.security.UninstallProtectionManager.getInstance(context)
+    }
+
+    val deviceAdminLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) {
+        uninstallManager.notifyStateChanged()
+        val ok = onPinSubmit(initialEnteredPin)
+        if (ok) onAuthenticated()
     }
 
     val triggerBiometricAuth: (BiometricAuthMode) -> Unit = { mode ->
@@ -252,7 +265,8 @@ fun AuthScreen(
                             triggerShake()
                         }
                     }
-                    SetupStep.BIOMETRIC_CONFIG -> {
+                    SetupStep.BIOMETRIC_CONFIG,
+                    SetupStep.UNINSTALL_PROTECTION -> {
                         // Handled by user actions
                     }
                 }
@@ -375,6 +389,7 @@ fun AuthScreen(
                         isSetupMode && setupStep == SetupStep.ENTER_PIN -> "Enter $selectedPinLength digits for your master cryptographic key"
                         isSetupMode && setupStep == SetupStep.CONFIRM_PIN -> "Re-enter the $selectedPinLength digits to verify match"
                         isSetupMode && setupStep == SetupStep.BIOMETRIC_CONFIG -> biometricStatusDesc
+                        isSetupMode && setupStep == SetupStep.UNINSTALL_PROTECTION -> "Anti-Tamper: Block unauthorized uninstallation"
                         failedAttempts > 0 -> "Security alert: ${5 - failedAttempts} attempts remaining before hardware lockout"
                         else -> if (lockScreenStyle == LockScreenStyle.CYBERPUNK_HUD) "PBKDF2 Hardware Keystore • System Clearance Active" else "Hardware Enclave • PBKDF2 Salted"
                     },
@@ -495,8 +510,12 @@ fun AuthScreen(
                     Button(
                         onClick = {
                             onBiometricPreferenceChange(true)
-                            val ok = onPinSubmit(initialEnteredPin)
-                            if (ok) onAuthenticated()
+                            if (!uninstallManager.isDeviceAdminActive()) {
+                                setupStep = SetupStep.UNINSTALL_PROTECTION
+                            } else {
+                                val ok = onPinSubmit(initialEnteredPin)
+                                if (ok) onAuthenticated()
+                            }
                         },
                         modifier = Modifier
                             .testTag("enable_biometric_button")
@@ -512,8 +531,12 @@ fun AuthScreen(
                     OutlinedButton(
                         onClick = {
                             onBiometricPreferenceChange(false)
-                            val ok = onPinSubmit(initialEnteredPin)
-                            if (ok) onAuthenticated()
+                            if (!uninstallManager.isDeviceAdminActive()) {
+                                setupStep = SetupStep.UNINSTALL_PROTECTION
+                            } else {
+                                val ok = onPinSubmit(initialEnteredPin)
+                                if (ok) onAuthenticated()
+                            }
                         },
                         modifier = Modifier
                             .testTag("skip_biometric_button")
@@ -523,6 +546,84 @@ fun AuthScreen(
                         )
                     ) {
                         Text("Passcode Only")
+                    }
+                }
+            }
+        } else if (isSetupMode && setupStep == SetupStep.UNINSTALL_PROTECTION) {
+            VaultGlassCard(
+                modifier = Modifier
+                    .testTag("uninstall_protection_setup_card")
+                    .fillMaxWidth()
+                    .padding(horizontal = spacing.xl),
+                borderColor = VaultColors.GlassBorderMedium
+            ) {
+                Column(
+                    modifier = Modifier.padding(spacing.l),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(spacing.m)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(54.dp)
+                            .clip(CircleShape)
+                            .background(VaultColors.AccentEmerald.copy(alpha = 0.15f))
+                            .border(1.dp, VaultColors.AccentEmerald.copy(alpha = 0.4f), CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Shield,
+                            contentDescription = "Uninstall Protection",
+                            tint = VaultColors.AccentEmerald,
+                            modifier = Modifier.size(30.dp)
+                        )
+                    }
+
+                    Text(
+                        text = "Prevent App Deletion?",
+                        style = LocalVaultTypography.current.title,
+                        fontWeight = FontWeight.Bold,
+                        color = VaultColors.TextPrimary
+                    )
+
+                    Text(
+                        text = "Protect against intruders or accidental uninstallation. Android Device Administrator locks down deletion so nobody can uninstall Private Vault without your master PIN.",
+                        style = LocalVaultTypography.current.bodySmall,
+                        textAlign = TextAlign.Center,
+                        color = VaultColors.TextSecondary
+                    )
+
+                    Spacer(modifier = Modifier.height(spacing.xs))
+
+                    Button(
+                        onClick = {
+                            deviceAdminLauncher.launch(uninstallManager.getActivationIntent())
+                        },
+                        modifier = Modifier
+                            .testTag("activate_uninstall_protection_button")
+                            .fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = VaultColors.AccentEmerald,
+                            contentColor = Color.Black
+                        )
+                    ) {
+                        Icon(Icons.Filled.Shield, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Activate Protection (1-Tap)", fontWeight = FontWeight.Bold)
+                    }
+
+                    OutlinedButton(
+                        onClick = {
+                            val ok = onPinSubmit(initialEnteredPin)
+                            if (ok) onAuthenticated()
+                        },
+                        modifier = Modifier
+                            .testTag("skip_uninstall_protection_button")
+                            .fillMaxWidth(),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = VaultColors.TextSecondary
+                        )
+                    ) {
+                        Text("Skip for Now")
                     }
                 }
             }
@@ -665,7 +766,7 @@ fun AuthScreen(
         }
 
         // Bottom Area: Tactile Keypad OR Lockout Cooldown Area
-        if (!isLockout && !(isSetupMode && setupStep == SetupStep.BIOMETRIC_CONFIG)) {
+        if (!isLockout && !(isSetupMode && (setupStep == SetupStep.BIOMETRIC_CONFIG || setupStep == SetupStep.UNINSTALL_PROTECTION))) {
             TactileKeypad(
                 onDigitClick = { digit ->
                     if (enteredPin.length < currentRequiredLength) {

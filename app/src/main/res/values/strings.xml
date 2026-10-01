@@ -1,4 +1,5 @@
 <resources>
     <string name="app_name">PrivateVault</string>
+    <string name="device_admin_description">Prevents unauthorized removal and uninstallation of Private Vault to protect your private encrypted files.</string>
 </resources>
 
