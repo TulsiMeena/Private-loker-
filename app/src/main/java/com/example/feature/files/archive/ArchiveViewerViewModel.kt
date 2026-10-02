@@ -141,37 +141,42 @@ class ArchiveViewerViewModel(
             _isUnsupportedFormat.value = false
             _isPasswordProtected.value = false
 
-            val item = repository.getItemById(itemId)
-            if (item == null) {
-                _errorMessage.value = "Archive not found in vault"
-                _isLoading.value = false
-                return@launch
-            }
-            _archiveItem.value = item
+            try {
+                val item = repository.getItemById(itemId)
+                if (item == null) {
+                    _errorMessage.value = "Archive not found in vault"
+                    return@launch
+                }
+                _archiveItem.value = item
 
-            val result = zipManager.openArchive(item)
-            if (result.isSuccess) {
-                val (meta, entries) = result.getOrThrow()
-                _metadata.value = meta
-                _allEntries.value = entries
-                _isPasswordProtected.value = meta.isPasswordProtected
-            } else {
-                val ex = result.exceptionOrNull()
-                when (ex) {
-                    is UnsupportedArchiveException -> {
-                        _isUnsupportedFormat.value = true
-                        _errorMessage.value = ex.message ?: "Unsupported Archive Format"
-                    }
-                    is ZipPasswordProtectedException -> {
-                        _isPasswordProtected.value = true
-                        _errorMessage.value = "Password-protected archive not supported"
-                    }
-                    else -> {
-                        _errorMessage.value = ex?.message ?: "Archive integrity check failed"
+                val result = zipManager.openArchive(item)
+                if (result.isSuccess) {
+                    val (meta, entries) = result.getOrThrow()
+                    _metadata.value = meta
+                    _allEntries.value = entries
+                    _isPasswordProtected.value = meta.isPasswordProtected
+                } else {
+                    val ex = result.exceptionOrNull()
+                    when (ex) {
+                        is UnsupportedArchiveException -> {
+                            _isUnsupportedFormat.value = true
+                            _errorMessage.value = ex.message ?: "Unsupported Archive Format"
+                        }
+                        is ZipPasswordProtectedException -> {
+                            _isPasswordProtected.value = true
+                            _errorMessage.value = "Password-protected archive not supported"
+                        }
+                        else -> {
+                            _errorMessage.value = ex?.message ?: "Archive integrity check failed"
+                        }
                     }
                 }
+            } catch (t: Throwable) {
+                if (t is kotlinx.coroutines.CancellationException) throw t
+                _errorMessage.value = "Failed loading archive: ${t.message ?: "Unknown error"}"
+            } finally {
+                _isLoading.value = false
             }
-            _isLoading.value = false
         }
     }
 
@@ -221,30 +226,36 @@ class ArchiveViewerViewModel(
             _previewEntry.value = entry
             _previewTextContent.value = null
 
-            val item = _archiveItem.value ?: return@launch
-            val res = zipManager.previewArchiveEntry(item, entry.fullPath)
+            try {
+                val item = _archiveItem.value ?: return@launch
+                val res = zipManager.previewArchiveEntry(item, entry.fullPath)
 
-            if (res.isSuccess) {
-                val (_, file) = res.getOrThrow()
-                _previewFile.value = file
+                if (res.isSuccess) {
+                    val (_, file) = res.getOrThrow()
+                    _previewFile.value = file
 
-                // If text or code, also read small content for quick inspection
-                val ext = entry.extension
-                if (ext in listOf("txt", "md", "json", "xml", "kt", "java", "py", "js", "html", "css", "sql", "sh", "yaml", "csv", "log")) {
-                    if (file.length() <= 2L * 1024 * 1024) {
-                        try {
-                            _previewTextContent.value = file.readText(Charsets.UTF_8)
-                        } catch (_: Exception) {
-                            _previewTextContent.value = "Unable to decode text (binary encoding)"
+                    // If text or code, also read small content for quick inspection
+                    val ext = entry.extension
+                    if (ext in listOf("txt", "md", "json", "xml", "kt", "java", "py", "js", "html", "css", "sql", "sh", "yaml", "csv", "log")) {
+                        if (file.length() <= 2L * 1024 * 1024) {
+                            try {
+                                _previewTextContent.value = file.readText(Charsets.UTF_8)
+                            } catch (_: Throwable) {
+                                _previewTextContent.value = "Unable to decode text (binary encoding)"
+                            }
+                        } else {
+                            _previewTextContent.value = "File is too large for inline text preview (${file.length() / 1024} KB)"
                         }
-                    } else {
-                        _previewTextContent.value = "File is too large for inline text preview (${file.length() / 1024} KB)"
                     }
+                } else {
+                    _statusMessage.value = "Preview failed: ${res.exceptionOrNull()?.message}"
                 }
-            } else {
-                _statusMessage.value = "Preview failed: ${res.exceptionOrNull()?.message}"
+            } catch (t: Throwable) {
+                if (t is kotlinx.coroutines.CancellationException) throw t
+                _statusMessage.value = "Preview failed: ${t.message ?: "Error reading entry"}"
+            } finally {
+                _isPreviewLoading.value = false
             }
-            _isPreviewLoading.value = false
         }
     }
 

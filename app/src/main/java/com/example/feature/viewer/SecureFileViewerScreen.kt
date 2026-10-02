@@ -242,12 +242,12 @@ fun SecureFileViewerScreen(
                     }
 
                     // Archives / ZIP
-                    category == VaultCategory.ZIP -> {
+                    category == VaultCategory.ZIP || ext in listOf("zip", "jar", "apk", "aar", "tar", "gz", "7z", "rar", "bz2", "xz") -> {
                         val bytesResult = repository.decryptItemBytes(currentItem)
                         if (bytesResult.isSuccess) {
                             inMemoryBytes = bytesResult.getOrNull()
                         } else {
-                            errorMessage = "Decryption failed"
+                            errorMessage = "Decryption failed: ${bytesResult.exceptionOrNull()?.message ?: "unknown"}"
                         }
                     }
 
@@ -355,7 +355,8 @@ fun SecureFileViewerScreen(
                         }
 
                         // Open in Archive Studio for ZIP archives
-                        if (currentItem.category == VaultCategory.ZIP.name && onOpenInArchiveViewer != null) {
+                        val fileExt = currentItem.title.substringAfterLast('.', "").lowercase()
+                        if ((currentItem.category == VaultCategory.ZIP.name || fileExt in listOf("zip", "jar", "apk", "aar", "tar", "gz")) && onOpenInArchiveViewer != null) {
                             IconButton(onClick = { onOpenInArchiveViewer(currentItem.id) }) {
                                 Icon(
                                     imageVector = Icons.Default.FolderZip,
@@ -554,7 +555,7 @@ fun SecureFileViewerScreen(
                         }
 
                         // Archive
-                        category == VaultCategory.ZIP -> {
+                        category == VaultCategory.ZIP || ext in listOf("zip", "jar", "apk", "aar", "tar", "gz", "7z", "rar", "bz2", "xz") -> {
                             inMemoryBytes?.let { bytes ->
                                 SecureArchiveViewer(
                                     archiveBytes = bytes,

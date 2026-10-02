@@ -80,43 +80,77 @@ fun SecureArchiveViewer(
 
     LaunchedEffect(archiveBytes) {
         isLoading = true
+        securityWarning = null
         withContext(Dispatchers.IO) {
             val list = mutableListOf<ArchiveEntryInfo>()
             var totalUncompressed = 0L
             val maxAllowedUncompressed = 500L * 1024 * 1024 // 500 MB max bomb guard
 
-            try {
-                ZipInputStream(ByteArrayInputStream(archiveBytes)).use { zis ->
-                    var entry: ZipEntry? = zis.nextEntry
-                    while (entry != null) {
-                        val name = entry.name
-                        val isSuspicious = name.contains("..") || name.startsWith("/") || name.startsWith("\\")
-                        val uncompressed = entry.size.coerceAtLeast(0L)
-                        totalUncompressed += uncompressed
-
-                        list.add(
-                            ArchiveEntryInfo(
-                                name = name,
-                                isDirectory = entry.isDirectory,
-                                compressedSize = entry.compressedSize.coerceAtLeast(0L),
-                                uncompressedSize = uncompressed,
-                                isSuspicious = isSuspicious
-                            )
-                        )
-                        entry = zis.nextEntry
-                    }
+            if (archiveBytes.isEmpty()) {
+                withContext(Dispatchers.Main) {
+                    securityWarning = "Archive payload is empty."
+                    entries = emptyList()
+                    isLoading = false
                 }
-
-                if (totalUncompressed > maxAllowedUncompressed) {
-                    securityWarning = "Decompression bomb risk: Total uncompressed content exceeds 500MB safety threshold."
-                }
-            } catch (e: Exception) {
-                securityWarning = "Corrupt or encrypted archive payload: ${e.message}"
+                return@withContext
             }
 
-            withContext(Dispatchers.Main) {
-                entries = list
-                isLoading = false
+            try {
+                var entriesRead = 0
+                val parseArchive: (java.nio.charset.Charset) -> Boolean = { charset ->
+                    var success = false
+                    try {
+                        java.util.zip.ZipInputStream(ByteArrayInputStream(archiveBytes), charset).use { zis ->
+                            var entry: ZipEntry? = zis.nextEntry
+                            while (entry != null && entriesRead < 5000) {
+                                entriesRead++
+                                val name = entry.name
+                                val isSuspicious = name.contains("..") || name.startsWith("/") || name.startsWith("\\")
+                                val uncompressed = entry.size.coerceAtLeast(0L)
+                                totalUncompressed += uncompressed
+
+                                list.add(
+                                    ArchiveEntryInfo(
+                                        name = name,
+                                        isDirectory = entry.isDirectory,
+                                        compressedSize = entry.compressedSize.coerceAtLeast(0L),
+                                        uncompressedSize = uncompressed,
+                                        isSuspicious = isSuspicious
+                                    )
+                                )
+                                entry = zis.nextEntry
+                            }
+                        }
+                        success = true
+                    } catch (_: Throwable) {
+                        success = false
+                    }
+                    success
+                }
+
+                // 1. Try UTF-8 parsing
+                var ok = parseArchive(java.nio.charset.StandardCharsets.UTF_8)
+                // 2. Fallback to ISO-8859-1 for legacy/Windows zip files
+                if (!ok && list.isEmpty()) {
+                    list.clear()
+                    totalUncompressed = 0L
+                    entriesRead = 0
+                    ok = parseArchive(java.nio.charset.StandardCharsets.ISO_8859_1)
+                }
+
+                if (!ok && list.isEmpty()) {
+                    securityWarning = "Corrupt or encrypted archive payload. Try opening in dedicated Archive Studio."
+                } else if (totalUncompressed > maxAllowedUncompressed) {
+                    securityWarning = "Decompression bomb risk: Total uncompressed content exceeds 500MB safety threshold."
+                }
+            } catch (t: Throwable) {
+                if (t is kotlinx.coroutines.CancellationException) throw t
+                securityWarning = "Error reading archive: ${t.message ?: "Unknown error"}"
+            } finally {
+                withContext(Dispatchers.Main) {
+                    entries = list
+                    isLoading = false
+                }
             }
         }
     }
@@ -229,19 +263,33 @@ fun SecureArchiveViewer(
                         onExtract = {
                             // Extract single entry safely
                             withContext(Dispatchers.IO) {
-                                ZipInputStream(ByteArrayInputStream(archiveBytes)).use { zis ->
-                                    var e = zis.nextEntry
-                                    while (e != null) {
-                                        if (e.name == item.name && !e.isDirectory) {
-                                            val buffer = zis.readBytes()
-                                            withContext(Dispatchers.Main) {
-                                                onExtractEntryToVault(item.name.substringAfterLast('/'), buffer)
+                                try {
+                                    val tryExtract: suspend (java.nio.charset.Charset) -> Boolean = { cs ->
+                                        var found = false
+                                        try {
+                                            java.util.zip.ZipInputStream(ByteArrayInputStream(archiveBytes), cs).use { zis ->
+                                                var e = zis.nextEntry
+                                                while (e != null) {
+                                                    if (e.name == item.name && !e.isDirectory) {
+                                                        val buffer = zis.readBytes()
+                                                        withContext(Dispatchers.Main) {
+                                                            onExtractEntryToVault(item.name.substringAfterLast('/'), buffer)
+                                                        }
+                                                        found = true
+                                                        break
+                                                    }
+                                                    e = zis.nextEntry
+                                                }
                                             }
-                                            break
+                                        } catch (_: Throwable) {
+                                            found = false
                                         }
-                                        e = zis.nextEntry
+                                        found
                                     }
-                                }
+                                    if (!tryExtract(java.nio.charset.StandardCharsets.UTF_8)) {
+                                        tryExtract(java.nio.charset.StandardCharsets.ISO_8859_1)
+                                    }
+                                } catch (_: Throwable) {}
                             }
                         }
                     )

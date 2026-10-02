@@ -50,7 +50,7 @@ object ZipArchiveEngine {
         var isPasswordProtected = false
 
         try {
-            ZipFile(archiveFile).use { zipFile ->
+            ZipFile(archiveFile, java.nio.charset.StandardCharsets.UTF_8).use { zipFile ->
                 val enumEntries = zipFile.entries()
                 var entryCount = 0
 
@@ -193,10 +193,11 @@ object ZipArchiveEngine {
         targetFile: File,
         maxSizeBytes: Long = 50L * 1024 * 1024
     ) {
-        ZipFile(archiveFile).use { zipFile ->
+        ZipFile(archiveFile, java.nio.charset.StandardCharsets.UTF_8).use { zipFile ->
             val entry = zipFile.getEntry(entryPath)
                 ?: zipFile.entries().asSequence().find {
-                    ZipSecurityEngine.sanitizeEntryPath(it.name) == entryPath
+                    val sanitized = try { ZipSecurityEngine.sanitizeEntryPath(it.name) } catch (_: Exception) { it.name }
+                    sanitized == entryPath || it.name.trimStart('/') == entryPath.trimStart('/') || it.name == entryPath
                 }
                 ?: throw IllegalArgumentException("Archive entry not found: $entryPath")
 
@@ -204,7 +205,7 @@ object ZipArchiveEngine {
                 throw IllegalArgumentException("Cannot extract directory entry as single file: $entryPath")
             }
 
-            if (entry.size > maxSizeBytes) {
+            if (entry.size > 0 && entry.size > maxSizeBytes) {
                 throw ZipBombException("Entry exceeds safe preview limit ($maxSizeBytes bytes)")
             }
 

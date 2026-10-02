@@ -41,8 +41,9 @@ class ZipVaultManager(
                 tempArchiveFile = storageManager.createTemporaryDecryptedFile(item.encryptedPath, "${item.id}.zip")
                 val (metadata, entries) = ZipArchiveEngine.readArchiveStructure(tempArchiveFile, item.id)
                 Result.success(Pair(metadata, entries))
-            } catch (e: Exception) {
-                Result.failure(e)
+            } catch (t: Throwable) {
+                if (t is kotlinx.coroutines.CancellationException) throw t
+                Result.failure(if (t is Exception) t else Exception(t.message ?: "Archive error", t))
             } finally {
                 tempArchiveFile?.let { storageManager.releaseTemporaryFile(it) }
             }
@@ -59,18 +60,30 @@ class ZipVaultManager(
         var previewFile: File? = null
         try {
             tempArchiveFile = storageManager.createTemporaryDecryptedFile(item.encryptedPath, "${item.id}.zip")
-            val (_, entries) = ZipArchiveEngine.readArchiveStructure(tempArchiveFile, item.id)
-            val entryItem = entries.find { it.fullPath == entryPath }
-                ?: return@withContext Result.failure(IllegalArgumentException("Entry not found: $entryPath"))
-
-            val ext = entryItem.name.substringAfterLast('.', "tmp")
-            previewFile = storageManager.tempFileManager.createTransientFile(ext)
+            val cleanExt = entryPath.substringAfterLast('.', "tmp")
+            previewFile = storageManager.tempFileManager.createTransientFile(cleanExt)
 
             ZipArchiveEngine.extractSingleEntry(tempArchiveFile, entryPath, previewFile)
+            val name = entryPath.substringAfterLast('/')
+            val cat = VaultCategory.fromFileNameAndMime(name, "application/octet-stream")
+            val entryItem = ArchiveEntryItem(
+                fullPath = entryPath,
+                name = name,
+                isDirectory = false,
+                parentPath = if (entryPath.contains('/')) entryPath.substringBeforeLast('/') else "",
+                uncompressedSize = previewFile.length(),
+                compressedSize = previewFile.length(),
+                crc = 0L,
+                lastModifiedTime = System.currentTimeMillis(),
+                category = cat,
+                mimeType = cat.defaultMime,
+                isEncrypted = false
+            )
             Result.success(Pair(entryItem, previewFile))
-        } catch (e: Exception) {
+        } catch (t: Throwable) {
+            if (t is kotlinx.coroutines.CancellationException) throw t
             previewFile?.let { storageManager.releaseTemporaryFile(it) }
-            Result.failure(e)
+            Result.failure(if (t is Exception) t else Exception(t.message ?: "Preview extraction failed", t))
         } finally {
             tempArchiveFile?.let { storageManager.releaseTemporaryFile(it) }
         }
