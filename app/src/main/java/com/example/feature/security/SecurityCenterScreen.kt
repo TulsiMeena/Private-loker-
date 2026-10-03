@@ -116,6 +116,7 @@ fun SecurityCenterScreen(
     onNavigateToBackupCenter: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     val spacing = LocalVaultSpacing.current
     val dashboardState by viewModel.dashboardState.collectAsState()
     val auditLogs by viewModel.auditLogs.collectAsState()
@@ -401,6 +402,26 @@ fun SecurityCenterScreen(
                         "ENABLE_SCREEN_PROT" -> viewModel.setScreenProtectionEnabled(true)
                         "ENABLE_RECENT_APP" -> viewModel.setRecentAppPrivacyEnabled(true)
                         "ENABLE_CLIPBOARD" -> viewModel.setClipboardProtectionEnabled(true)
+                        "ACTIVATE_UNINSTALL_PROTECTION" -> {
+                            val mgr = com.example.core.security.UninstallProtectionManager.getInstance(context)
+                            try {
+                                val intent = mgr.getActivationIntent(asNewTask = activity == null)
+                                if (activity != null) {
+                                    activity.startActivity(intent)
+                                } else {
+                                    context.startActivity(intent)
+                                }
+                            } catch (_: Exception) {
+                                try {
+                                    val secIntent = mgr.getSecuritySettingsIntent()
+                                    if (activity != null) {
+                                        activity.startActivity(secIntent)
+                                    } else {
+                                        context.startActivity(secIntent)
+                                    }
+                                } catch (_: Exception) {}
+                            }
+                        }
                     }
                 }
             )

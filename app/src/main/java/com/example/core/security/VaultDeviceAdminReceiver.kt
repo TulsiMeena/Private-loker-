@@ -25,6 +25,13 @@ class VaultDeviceAdminReceiver : DeviceAdminReceiver() {
     }
 
     override fun onDisableRequested(context: Context, intent: Intent): CharSequence {
-        return "WARNING: Disabling Device Administrator removes Anti-Uninstall Protection. An intruder or unauthorized person will be able to delete Private Vault and all encrypted files."
+        try {
+            IntruderDetectionManager.getInstance(context).onFailedAttempt(
+                attemptsCount = 3,
+                reason = "Tamper Alert: Attempted to deactivate Anti-Uninstall Device Administrator"
+            )
+        } catch (_: Throwable) {}
+
+        return "🚨 TAMPER ALERT: Disabling Device Administrator removes Anti-Uninstall Protection! Anyone will be able to delete Private Vault and permanently destroy or expose your encrypted files. If this was intentional, disable it inside Private Vault using your Master PIN."
     }
 }

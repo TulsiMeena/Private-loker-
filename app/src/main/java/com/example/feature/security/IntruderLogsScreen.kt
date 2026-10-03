@@ -1,6 +1,9 @@
 package com.example.feature.security
 
 import android.graphics.BitmapFactory
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -81,6 +84,18 @@ fun IntruderLogsScreen(
     var showClearDialog by remember { mutableStateOf(false) }
     var selectedPhotoPath by remember { mutableStateOf<String?>(null) }
 
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            intruderManager.setCaptureEnabled(true)
+            Toast.makeText(context, "Camera permission granted. Front camera selfie active.", Toast.LENGTH_SHORT).show()
+        } else {
+            intruderManager.setCaptureEnabled(true)
+            Toast.makeText(context, "Camera permission denied. Digital alert badge mode active.", Toast.LENGTH_LONG).show()
+        }
+    }
+
     Scaffold(
         modifier = modifier.fillMaxSize(),
         containerColor = Color(0xFF0B0F19),
@@ -148,7 +163,21 @@ fun IntruderLogsScreen(
                             }
                             Switch(
                                 checked = isEnabled,
-                                onCheckedChange = { intruderManager.setCaptureEnabled(it) },
+                                onCheckedChange = { enabled ->
+                                    if (enabled) {
+                                        val hasCam = androidx.core.content.ContextCompat.checkSelfPermission(
+                                            context,
+                                            android.Manifest.permission.CAMERA
+                                        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                                        if (hasCam) {
+                                            intruderManager.setCaptureEnabled(true)
+                                        } else {
+                                            cameraPermissionLauncher.launch(android.Manifest.permission.CAMERA)
+                                        }
+                                    } else {
+                                        intruderManager.setCaptureEnabled(false)
+                                    }
+                                },
                                 colors = SwitchDefaults.colors(
                                     checkedThumbColor = Color.White,
                                     checkedTrackColor = VaultColors.AccentRed

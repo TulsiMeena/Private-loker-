@@ -797,6 +797,11 @@ private fun WorkspaceDashboardContent(
         uninstallManager.notifyStateChanged()
     }
 
+    androidx.lifecycle.compose.LifecycleResumeEffect(Unit) {
+        uninstallManager.notifyStateChanged()
+        onPauseOrDispose {}
+    }
+
     LazyColumn(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -858,7 +863,15 @@ private fun WorkspaceDashboardContent(
                         ) {
                             Button(
                                 onClick = {
-                                    deviceAdminLauncher.launch(uninstallManager.getActivationIntent())
+                                    try {
+                                        deviceAdminLauncher.launch(uninstallManager.getActivationIntent())
+                                    } catch (_: Exception) {
+                                        try {
+                                            context.startActivity(uninstallManager.getSecuritySettingsIntent())
+                                        } catch (e: Exception) {
+                                            android.widget.Toast.makeText(context, "Cannot open settings: ${e.localizedMessage}", android.widget.Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
                                 },
                                 colors = ButtonDefaults.buttonColors(containerColor = VaultColors.AccentAmber),
                                 shape = RoundedCornerShape(8.dp),

@@ -18,7 +18,9 @@ import kotlinx.coroutines.flow.asStateFlow
 class UninstallProtectionManager private constructor(context: Context) {
 
     private val appContext = context.applicationContext
-    private val dpm = appContext.getSystemService(Context.DEVICE_POLICY_SERVICE) as? DevicePolicyManager
+    private fun getDpm(): DevicePolicyManager? =
+        appContext.getSystemService(Context.DEVICE_POLICY_SERVICE) as? DevicePolicyManager
+
     val componentName = ComponentName(appContext, VaultDeviceAdminReceiver::class.java)
 
     private val prefs = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -34,7 +36,7 @@ class UninstallProtectionManager private constructor(context: Context) {
      */
     fun isDeviceAdminActive(): Boolean {
         return try {
-            dpm?.isAdminActive(componentName) == true
+            getDpm()?.isAdminActive(componentName) == true
         } catch (_: Exception) {
             false
         }
@@ -44,19 +46,33 @@ class UninstallProtectionManager private constructor(context: Context) {
      * Re-queries the system status and updates StateFlow.
      */
     fun notifyStateChanged() {
-        _isProtected.value = isDeviceAdminActive()
+        val active = isDeviceAdminActive()
+        _isProtected.value = active
     }
 
     /**
      * Creates an Intent to prompt the user with Android's system Device Administrator activation screen.
+     * Note: Do NOT add FLAG_ACTIVITY_NEW_TASK when using with ActivityResultLauncher, as Android
+     * will immediately cancel the result before the prompt can be completed.
      */
-    fun getActivationIntent(): Intent {
+    fun getActivationIntent(asNewTask: Boolean = false): Intent {
         return Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN).apply {
             putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, componentName)
             putExtra(
                 DevicePolicyManager.EXTRA_ADD_EXPLANATION,
                 "Activate Device Admin for Private Vault to protect against unauthorized app uninstallation, accidental deletion, and data loss."
             )
+            if (asNewTask) {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+        }
+    }
+
+    /**
+     * Fallback intent to open Android Security & Privacy settings in case direct activation is blocked.
+     */
+    fun getSecuritySettingsIntent(): Intent {
+        return Intent(android.provider.Settings.ACTION_SECURITY_SETTINGS).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
     }
@@ -67,7 +83,7 @@ class UninstallProtectionManager private constructor(context: Context) {
      */
     fun deactivateProtection(): Boolean {
         return try {
-            dpm?.removeActiveAdmin(componentName)
+            getDpm()?.removeActiveAdmin(componentName)
             notifyStateChanged()
             true
         } catch (e: Exception) {

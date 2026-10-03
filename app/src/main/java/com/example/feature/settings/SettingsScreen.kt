@@ -849,6 +849,7 @@ private fun SecuritySettingsSection(
     val uninstallManager = remember(context) { com.example.core.security.UninstallProtectionManager.getInstance(context) }
     val isUninstallProtected by uninstallManager.isProtected.collectAsState()
     var showDeactivateAdminDialog by remember { mutableStateOf(false) }
+    var showUninstallInfoDialog by remember { mutableStateOf(false) }
     var deactivateAdminPinInput by remember { mutableStateOf("") }
     var deactivateAdminError by remember { mutableStateOf<String?>(null) }
 
@@ -856,6 +857,36 @@ private fun SecuritySettingsSection(
         contract = ActivityResultContracts.StartActivityForResult()
     ) {
         uninstallManager.notifyStateChanged()
+    }
+
+    androidx.lifecycle.compose.LifecycleResumeEffect(Unit) {
+        uninstallManager.notifyStateChanged()
+        onPauseOrDispose {}
+    }
+
+    val launchAdminActivation: () -> Unit = {
+        try {
+            deviceAdminLauncher.launch(uninstallManager.getActivationIntent())
+        } catch (_: Exception) {
+            try {
+                context.startActivity(uninstallManager.getSecuritySettingsIntent())
+                Toast.makeText(context, "Please enable Private Vault in Device Admin apps", Toast.LENGTH_LONG).show()
+            } catch (e: Exception) {
+                Toast.makeText(context, "Cannot open Device Admin: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            intruderManager.setCaptureEnabled(true)
+            Toast.makeText(context, "Camera permission granted. Stealth selfie active.", Toast.LENGTH_SHORT).show()
+        } else {
+            intruderManager.setCaptureEnabled(true)
+            Toast.makeText(context, "Camera permission denied. Digital alert badge mode active.", Toast.LENGTH_LONG).show()
+        }
     }
 
     var autoLockDropdownExpanded by remember { mutableStateOf(false) }
@@ -1209,7 +1240,21 @@ private fun SecuritySettingsSection(
             subtitle = "Secretly captures front-camera photo of anyone trying to break in with wrong PIN",
             checked = intruderCaptureEnabled,
             icon = Icons.Default.CameraAlt,
-            onCheckedChange = { intruderManager.setCaptureEnabled(it) }
+            onCheckedChange = { enabled ->
+                if (enabled) {
+                    val hasCam = androidx.core.content.ContextCompat.checkSelfPermission(
+                        context,
+                        android.Manifest.permission.CAMERA
+                    ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                    if (hasCam) {
+                        intruderManager.setCaptureEnabled(true)
+                    } else {
+                        cameraPermissionLauncher.launch(android.Manifest.permission.CAMERA)
+                    }
+                } else {
+                    intruderManager.setCaptureEnabled(false)
+                }
+            }
         )
         if (intruderCaptureEnabled) {
             OutlinedButton(
@@ -1342,7 +1387,7 @@ private fun SecuritySettingsSection(
                         checked = isUninstallProtected,
                         onCheckedChange = { enable ->
                             if (enable) {
-                                deviceAdminLauncher.launch(uninstallManager.getActivationIntent())
+                                launchAdminActivation()
                             } else {
                                 deactivateAdminPinInput = ""
                                 deactivateAdminError = null
@@ -1358,11 +1403,23 @@ private fun SecuritySettingsSection(
                     )
                 }
 
-                if (!isUninstallProtected) {
+                if (isUninstallProtected) {
+                    OutlinedButton(
+                        onClick = { showUninstallInfoDialog = true },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = VaultColors.AccentEmerald
+                        ),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, VaultColors.AccentEmerald.copy(alpha = 0.4f))
+                    ) {
+                        Icon(Icons.Default.Info, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("How Anti-Uninstall Works (Shield Active)", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                } else {
                     Button(
-                        onClick = {
-                            deviceAdminLauncher.launch(uninstallManager.getActivationIntent())
-                        },
+                        onClick = launchAdminActivation,
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(8.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = VaultColors.AccentEmerald)
@@ -1373,6 +1430,44 @@ private fun SecuritySettingsSection(
                     }
                 }
             }
+        }
+
+        if (showUninstallInfoDialog) {
+            AlertDialog(
+                onDismissRequest = { showUninstallInfoDialog = false },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Shield, contentDescription = null, tint = VaultColors.AccentEmerald)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Anti-Uninstall Shield Active", color = VaultColors.TextPrimary)
+                    }
+                },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(
+                            "Android Device Administrator is active and enforcing uninstall protection:",
+                            color = VaultColors.TextSecondary,
+                            fontSize = 13.sp
+                        )
+                        Text(
+                            "🔒 Direct Deletion Blocked: If anyone drags this app to 'Uninstall' or presses Uninstall in Android Settings, the OS completely blocks removal.\n\n" +
+                            "🚨 Tamper Detection: If someone tries to deactivate Device Admin in Android settings, Private Vault captures an intruder alert.\n\n" +
+                            "🔑 Safe Deactivation: To uninstall the app yourself, turn off the Anti-Uninstall switch above using your Master PIN.",
+                            color = VaultColors.TextTertiary,
+                            fontSize = 12.sp,
+                            lineHeight = 18.sp
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = { showUninstallInfoDialog = false },
+                        colors = ButtonDefaults.buttonColors(containerColor = VaultColors.AccentEmerald)
+                    ) {
+                        Text("Understood", color = Color.Black, fontWeight = FontWeight.Bold)
+                    }
+                }
+            )
         }
 
         if (showDeactivateAdminDialog) {

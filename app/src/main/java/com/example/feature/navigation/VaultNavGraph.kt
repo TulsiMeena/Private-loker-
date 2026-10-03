@@ -180,7 +180,7 @@ fun VaultNavGraph(
             val targetLockDestination = if (calculatorDisguiseEnabled) {
                 VaultDestinations.CALCULATOR_DISGUISE
             } else {
-                VaultDestinations.HOME
+                VaultDestinations.AUTH
             }
             if (currentRoute != null && currentRoute != VaultDestinations.AUTH && currentRoute != VaultDestinations.LAUNCH && currentRoute != targetLockDestination) {
                 navController.navigate(targetLockDestination) {

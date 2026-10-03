@@ -63,7 +63,7 @@ class IntruderDetectionManager(private val context: Context) {
     private val _captureEnabled = MutableStateFlow(prefs.getBoolean(KEY_INTRUDER_CAPTURE_ENABLED, true))
     val captureEnabled: StateFlow<Boolean> = _captureEnabled.asStateFlow()
 
-    private val _attemptThreshold = MutableStateFlow(prefs.getInt(KEY_ATTEMPT_THRESHOLD, 2))
+    private val _attemptThreshold = MutableStateFlow(prefs.getInt(KEY_ATTEMPT_THRESHOLD, 3))
     val attemptThreshold: StateFlow<Int> = _attemptThreshold.asStateFlow()
 
     private val _intruderLogs = MutableStateFlow<List<IntruderLogEntry>>(loadLogs())
@@ -107,106 +107,147 @@ class IntruderDetectionManager(private val context: Context) {
         val fileName = "intruder_${now}_${entryId.take(8)}.jpg"
         val photoFile = File(capturesDir, fileName)
 
-        // Try stealth front camera capture if hardware permission is granted;
-        // otherwise generate an encrypted security capture badge with timestamp and attempt telemetry.
         val hasCameraPermission = androidx.core.content.ContextCompat.checkSelfPermission(
             context,
             android.Manifest.permission.CAMERA
         ) == android.content.pm.PackageManager.PERMISSION_GRANTED
 
-        if (hasCameraPermission && !PrivacyProtectionManager.isEmulatorOrPreview()) {
+        if (hasCameraPermission) {
             attemptFrontCameraCapture(photoFile) { success ->
-                val finalFile = if (success && photoFile.exists() && photoFile.length() > 0) photoFile else null
-                recordLog(entryId, now, finalFile?.absolutePath, reason, attemptsCount)
+                if (success && photoFile.exists() && photoFile.length() > 0) {
+                    recordLog(entryId, now, photoFile.absolutePath, reason, attemptsCount)
+                } else {
+                    // Fallback to telemetry evidence snapshot if camera sensor timed out or unavailable
+                    val generatedFile = createSecurityAlertSnapshot(photoFile, now, attemptsCount, reason)
+                    recordLog(entryId, now, generatedFile.absolutePath, reason, attemptsCount)
+                }
             }
         } else {
             // Synthesize high-security break-in alert snapshot bitmap
-            val generatedFile = createSecurityAlertSnapshot(photoFile, now, attemptsCount, reason)
+            val generatedFile = createSecurityAlertSnapshot(photoFile, now, attemptsCount, "$reason (No Camera Permission)")
             recordLog(entryId, now, generatedFile.absolutePath, reason, attemptsCount)
         }
     }
 
     private fun attemptFrontCameraCapture(destinationFile: File, onComplete: (Boolean) -> Unit) {
+        val isCompleted = java.util.concurrent.atomic.AtomicBoolean(false)
+        val thread = android.os.HandlerThread("IntruderCamThread").apply { start() }
+        val handler = Handler(thread.looper)
+
+        fun finish(success: Boolean, camera: CameraDevice? = null, reader: ImageReader? = null) {
+            if (isCompleted.compareAndSet(false, true)) {
+                try { camera?.close() } catch (_: Throwable) {}
+                try { reader?.close() } catch (_: Throwable) {}
+                try { thread.quitSafely() } catch (_: Throwable) {}
+                Handler(Looper.getMainLooper()).post {
+                    onComplete(success)
+                }
+            }
+        }
+
+        // Safety watchdog: max 3.5 seconds
+        handler.postDelayed({
+            finish(false)
+        }, 3500L)
+
         try {
             val cameraManager = context.getSystemService(Context.CAMERA_SERVICE) as? CameraManager
-                ?: run { onComplete(false); return }
+                ?: run { finish(false); return }
 
-            val frontCameraId = cameraManager.cameraIdList.firstOrNull { id ->
-                val characteristics = cameraManager.getCameraCharacteristics(id)
-                val facing = characteristics.get(CameraCharacteristics.LENS_FACING)
-                facing == CameraCharacteristics.LENS_FACING_FRONT
-            } ?: run { onComplete(false); return }
+            val cameraIdList = cameraManager.cameraIdList
+            if (cameraIdList.isEmpty()) {
+                finish(false)
+                return
+            }
 
-            val imageReader = ImageReader.newInstance(640, 480, android.graphics.ImageFormat.JPEG, 2)
-            val handler = Handler(Looper.getMainLooper())
+            // Find front camera, or fallback to first available camera
+            val targetCameraId = cameraIdList.firstOrNull { id ->
+                try {
+                    val characteristics = cameraManager.getCameraCharacteristics(id)
+                    characteristics.get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_FRONT
+                } catch (_: Throwable) {
+                    false
+                }
+            } ?: cameraIdList[0]
+
+            val characteristics = cameraManager.getCameraCharacteristics(targetCameraId)
+            val map = characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
+            val jpegSizes = map?.getOutputSizes(android.graphics.ImageFormat.JPEG)
+
+            // Pick closest to 640x480
+            val bestSize = jpegSizes?.minByOrNull {
+                kotlin.math.abs(it.width - 640) + kotlin.math.abs(it.height - 480)
+            } ?: android.util.Size(640, 480)
+
+            val imageReader = ImageReader.newInstance(
+                bestSize.width,
+                bestSize.height,
+                android.graphics.ImageFormat.JPEG,
+                2
+            )
+
+            var activeCamera: CameraDevice? = null
 
             imageReader.setOnImageAvailableListener({ reader ->
-                val image = reader.acquireLatestImage()
+                val image = try { reader.acquireLatestImage() } catch (_: Throwable) { null }
                 if (image != null) {
                     try {
                         val buffer = image.planes[0].buffer
                         val bytes = ByteArray(buffer.remaining())
                         buffer.get(bytes)
                         FileOutputStream(destinationFile).use { it.write(bytes) }
-                        onComplete(true)
-                    } catch (_: Exception) {
-                        onComplete(false)
+                        finish(true, activeCamera, reader)
+                    } catch (_: Throwable) {
+                        finish(false, activeCamera, reader)
                     } finally {
-                        image.close()
-                        reader.close()
+                        try { image.close() } catch (_: Throwable) {}
                     }
                 } else {
-                    onComplete(false)
+                    finish(false, activeCamera, reader)
                 }
             }, handler)
 
-            cameraManager.openCamera(frontCameraId, object : CameraDevice.StateCallback() {
+            cameraManager.openCamera(targetCameraId, object : CameraDevice.StateCallback() {
                 override fun onOpened(camera: CameraDevice) {
+                    activeCamera = camera
                     try {
                         val builder = camera.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE)
                         builder.addTarget(imageReader.surface)
+                        builder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
+
                         camera.createCaptureSession(
                             listOf(imageReader.surface),
                             object : android.hardware.camera2.CameraCaptureSession.StateCallback() {
                                 override fun onConfigured(session: android.hardware.camera2.CameraCaptureSession) {
                                     try {
                                         session.capture(builder.build(), null, handler)
-                                    } catch (_: Exception) {
-                                        camera.close()
-                                        onComplete(false)
+                                    } catch (_: Throwable) {
+                                        finish(false, camera, imageReader)
                                     }
                                 }
 
                                 override fun onConfigureFailed(session: android.hardware.camera2.CameraCaptureSession) {
-                                    camera.close()
-                                    onComplete(false)
+                                    finish(false, camera, imageReader)
                                 }
                             },
                             handler
                         )
-                    } catch (_: Exception) {
-                        camera.close()
-                        onComplete(false)
+                    } catch (_: Throwable) {
+                        finish(false, camera, imageReader)
                     }
                 }
 
                 override fun onDisconnected(camera: CameraDevice) {
-                    camera.close()
-                    onComplete(false)
+                    finish(false, camera, imageReader)
                 }
 
                 override fun onError(camera: CameraDevice, error: Int) {
-                    camera.close()
-                    onComplete(false)
+                    finish(false, camera, imageReader)
                 }
             }, handler)
 
-        } catch (_: SecurityException) {
-            onComplete(false)
-        } catch (_: CameraAccessException) {
-            onComplete(false)
-        } catch (_: Exception) {
-            onComplete(false)
+        } catch (_: Throwable) {
+            finish(false)
         }
     }
 
